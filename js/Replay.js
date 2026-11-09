@@ -68,8 +68,8 @@ var Replay = function(file, size) {
 		playerColor:   'varstr',
 		_4: function() {
 			// Unknown int32, sometimes followed by 4 more bytes before mapScript2:
-			//   BNW-era (2013):  01 00 00 00 00 00 00 00
-			//   1.0.3.279:       06 00 00 00
+			//   Vanilla BNW (2013 through 1.0.3.279):  01 00 00 00 00 00 00 00
+			//   Vox Populi / Community Patch:          06 00 00 00
 			// Pick whichever offset holds a plausible, non-empty string.
 			var start = this.tell()
 
@@ -147,8 +147,8 @@ var Replay = function(file, size) {
 			}
 		},
 		_7: function() {
-			// BNW-era files have an extra int32 before the events array; 1.0.3.279
-			// (and Vox Populi) files don't. Trial-parse the rest of the file both
+			// Vanilla files (2013 through 1.0.3.279) have an extra int32 before the
+			// events array; Vox Populi / Community Patch files don't. Trial-parse the rest of the file both
 			// ways and keep the alignment that lands exactly on a valid tile grid.
 			var start = this.tell()
 

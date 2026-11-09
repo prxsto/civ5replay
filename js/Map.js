@@ -101,7 +101,7 @@ ReplayMap.prototype.initLayers = function(tiles, events, startTurn, endTurn) {
 						break
 					case 'MOUNTAIN':
 					case 'HILL':
-						// 1.0.3.279 stores mountains as their own terrain type; draw a
+						// Vox Populi stores mountains as their own terrain type; draw a
 						// base underneath so the elevation layer has something to sit on
 						this.drawImage(ctx, 'PLAINS', x1, y1, x2 - x1, y2 - y1)
 						break

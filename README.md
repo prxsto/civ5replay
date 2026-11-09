@@ -6,7 +6,7 @@ You can also [direct link](http://aiwebb.github.io/civ5replay/?file=hrbho1q4dtro
 
 Supports Civ5Replay files created since about mid 2013, after the release of Brave New World.
 
-Also supports files from the final patch (1.0.3.279), including Vox Populi / Community Patch games. The parser detects the small layout differences between versions automatically.
+Tested with replays from the final patch (1.0.3.279), both unmodded and Vox Populi / Community Patch games. The parser detects the small layout differences between them automatically.
 
 ## Background
 
