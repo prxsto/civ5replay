@@ -1,12 +1,78 @@
 # Civilization V Replay Viewer
 
-Drag a .Civ5Replay file onto the page to load a replay: https://prxsto.github.io/civ5replay
+Play back a Civilization V game in your browser: the map, territory, borders, cities, events and per-civ stats, turn by turn.
 
-Example: [Wu Zetian, 4000 BC – 2006 AD](https://prxsto.github.io/civ5replay/?file=replays/wu-zetian-2006-ad.Civ5Replay)
+**Live site:** https://prxsto.github.io/civ5replay — drag a `.Civ5Replay` file onto the page, or [try an example](https://prxsto.github.io/civ5replay/?file=replays/wu-zetian-2006-ad.Civ5Replay).
 
-Supports Civ5Replay files created since about mid 2013, after the release of Brave New World.
+Replays are saved in `Documents/My Games/Sid Meier's Civilization 5/Replays/`. Everything runs client-side; files are never uploaded.
 
-Tested with replays from the final patch (1.0.3.279), both unmodded and Vox Populi / Community Patch games. The parser detects the small layout differences between them automatically.
+Supports replays from Brave New World (mid-2013) through the final patch (1.0.3.279), including Vox Populi / Community Patch games.
+
+## Features
+
+- Hex map with toggleable layers: terrain, features, hills & mountains, natural wonders, territory, borders, cities, city names, hex grid
+- Pan (drag), zoom (wheel / double-click / buttons), hover a tile for terrain, owner and city
+- Event log grouped by turn, filterable by event type and civilization; click an event to highlight it on the map
+- Stats tab: any of the ~27 per-civ datasets in the replay (score, techs, military, gold…) charted over time, with a ranking at the current turn
+- Timeline with an event-density strip, playback at five speeds, linkable `?file=…&turn=…` URLs
+
+## Development
+
+Vite + React 19 + TypeScript. Node 20.19+ (22 recommended).
+
+```bash
+npm install
+npm run dev        # http://localhost:5173
+npm test           # parser tests against every replay in public/replays/
+npm run build      # type-check + production build into dist/
+```
+
+To test against replays you don't want to commit:
+
+```bash
+REPLAY_DIR=~/path/to/replays npm test
+```
+
+### Project layout
+
+| Path | What |
+|---|---|
+| `src/parser/` | `.Civ5Replay` binary parser (`parseReplay.ts` documents the file layout) and its tests |
+| `src/model/timeline.ts` | Replays events into per-turn ownership + city snapshots |
+| `src/model/civColors.ts` | In-game civ colors; generated colors for city-states and modded civs |
+| `src/map/` | Hex geometry and canvas rendering (static base layer + per-turn overlay) |
+| `src/components/` | React UI: map, timeline, event log, stats, layer panel |
+| `public/tiles/` | Terrain textures |
+| `public/replays/` | Example replays, loadable with `?file=replays/<name>` |
+
+### Deployment
+
+`.github/workflows/deploy.yml` tests, builds and deploys to GitHub Pages on every push to `main`. One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub Actions**.
+
+## Keyboard shortcuts
+
+Key | Action
+--- | ---
+`space` | Play / pause
+`1` – `5` | Playback speed
+`←` `→` | Back / forward one turn
+`↑` `↓` | Back / forward ten turns
+`Home` `PgUp` / `End` `PgDn` | First / last turn
+`+` `-` `0` | Zoom in / out / fit
+`T` `F` `E` `W` `R` `B` `C` `N` `G` | Toggle terrain, features, elevation, wonders, territory, borders, cities, names, grid
+`Esc` | Clear highlighted event
+
+## Query parameters
+
+- `file` — path within the site (e.g. `replays/foo.Civ5Replay`) or a full URL to a CORS-enabled host
+- `turn` — turn to open at; kept in sync as you scrub
+
+## TODO
+
+- Tile artwork for marsh, oasis, flood plains and natural wonders (currently simple procedural marks)
+- Decode the remaining unknown header block (game options) and civ fields (likely player color / slot type)
+- Year labels per turn (needs the game-speed calendar)
+- Religion spread / war-and-peace layers from event text
 
 ## Background
 
@@ -20,60 +86,7 @@ I used [jDataView](https://github.com/jDataView/jDataView) to abstract the proce
 
 I used [Synalyze It](https://www.synalysis.net/) for OS X as my hex editor - it has a nice tagging scheme, a quick-view grid of human readable values for selected bytes, and good support for searching, jumping to various locations, and resizing the window to snap bytes into alignment. Not trying to shill for them, but I tried a dozen other products over the years before I found one with that combination of features, so credit where credit is due for producing a hex editor that doesn't have any major shortcomings.
 
-The end result was the [current JS config](https://github.com/aiwebb/civ5replay/blob/gh-pages/js/Replay.js#L12) describing the file format.
-
-## Development
-
-There is no build step. The app is plain browser JS with vendored libraries in `lib/` (jQuery 2.1, lodash 3.10, Leaflet 0.7.2, Bootstrap 3.3, jDataView).
-
-```bash
-python3 -m http.server 8000   # then open http://localhost:8000 and drop a .Civ5Replay on the page
-```
-
-Headless parser check (Node 18+). It loads `js/BinaryParser.js` + `js/Replay.js` in a VM and validates that the whole file was consumed:
-
-```bash
-node test/parse-replays.js path/to/*.Civ5Replay
-```
-
-Replays are saved under `Documents/My Games/Sid Meier's Civilization 5/Replays/`.
-
-## Keyboard shortcuts
-
-Key            | Action
--------------- | ------------
-`space`        | Play/pause
-`1` - `5`      | Set speed
-`←`, `→`       | Back/forward one turn
-`↑`, `↓`       | Back/forward ten turns
-`pgup`, `home` | Jump to first turn
-`pgdn`, `end`  | Jump to last turn
-`+`, `-`       | Zoom in/out
-
-## Query parameters
-
-#### turn
-
-Pass a `turn` parameter to automatically start on that turn.
-
-#### file
-
-Pass a `file` parameter to load a replay automatically. It can be a path within the site (put replays in `replays/`), or a full URL to a host that serves files with CORS enabled:
-
-    ?file=replays/wu-zetian-2006-ad.Civ5Replay&turn=150
-
-## TODO / contributing
-
-- Render the last few map features (marsh, oasis, flood plains)
-- Map out the rest of the natural wonders and add a new layer for them
-- Use an icon for cities instead of a solid color
-- Better tile artwork for nicer maps all around
-- More keyboard shortcuts for toggling map layers
-- Graph the available datasets
-- Loading indicator and error notice for initial parsing
-- Fix a couple of bugs in canvas rendering
-
-Since this is entirely client side with zero dependencies to install, it's an extremely easy project to fork and play around with. Pull requests are always welcome.
+The original JS parser config lives in the [upstream repo](https://github.com/aiwebb/civ5replay); this fork ports it to TypeScript in `src/parser/parseReplay.ts`.
 
 ## Special thanks
 A huge part of reverse engineering binary files is getting the first questions answered - how are integers encoded? Strings? Arrays? Several others had done varying degrees of work on the format before me, and while the file structure has changed so much since their efforts that I wasn't able to reuse much at all, their work was very important for that initial momentum:
