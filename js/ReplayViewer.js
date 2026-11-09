@@ -4,7 +4,7 @@ window.ReplayViewer = function() {
 }
 
 ReplayViewer.prototype.init = function() {
-	this.map = new Map()
+	this.map = new ReplayMap()
 
 	// Support file drag-and-drop
 	$('body').fileReaderJS({
@@ -75,7 +75,9 @@ ReplayViewer.prototype.process = function(data, length) {
 		delete control
 	})
 
-	this.map.initLayers(this.replay.tiles, this.replay.events)
+	this.map.initLayers(this.replay.tiles, this.replay.events, this.replay.meta.startTurn, this.replay.meta.endTurn)
+
+	if (this.controlBar) {this.controlBar.pause()}
 
 	this.controlBar = new ControlBar({
 		start:   this.replay.meta.startTurn,

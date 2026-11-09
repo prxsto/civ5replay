@@ -5,7 +5,7 @@ window.ControlBar = function(config) {
 
 	// Play/pause button
 	this.$playPause = $('#playPause')
-	this.$playPause.on('click', this.togglePlay.bind(this))
+	this.$playPause.off('click').on('click', this.togglePlay.bind(this))
 
 	// Speed slider
 	this.playIntervals = [2000, 1000, 600, 400, 0]
@@ -25,7 +25,7 @@ window.ControlBar = function(config) {
 
 	this.speedSlider = this.$speedSlider.data().slider
 
-	this.$speedSlider.on('change', e => this.setSpeed(e.value.newValue))
+	this.$speedSlider.off('change').on('change', e => this.setSpeed(e.value.newValue))
 
 	// Turn slider
 	this.$turnSlider = $('#turnSlider')
@@ -41,11 +41,13 @@ window.ControlBar = function(config) {
 
 	this.turnSlider = this.$turnSlider.data().slider
 
+	this.$turnSlider.off('change slide')
 	this.$turnSlider.on('change', e => this.config.onChange(e.value.newValue))
 	this.$turnSlider.on('slide',  e => this.config.onChange(e.value))
 
 	// Listen for spacebar to toggle play/pause
-	$(document).keydown(e => {
+	// Namespaced so re-creating the control bar (loading another file) doesn't stack handlers
+	$(document).off('keydown.controlbar').on('keydown.controlbar', e => {
 		switch (e.keyCode) {
 			case 32: this.togglePlay();                        return // space
 			case 33: this.setTurn(this.config.start);          return // page up

@@ -1,4 +1,35 @@
 // Replay files don't appear to include colors :-(
+// Anything not listed here (city-states, modded civs) gets a stable generated color.
+window.civColor = function(name) {
+	if (CIV_COLORS[name]) {return CIV_COLORS[name]}
+	if (!name) {return {city: [255, 255, 255], territory: [0, 0, 0]}}
+
+	CIV_COLOR_CACHE[name] = CIV_COLOR_CACHE[name] || generateCivColor(name)
+	return CIV_COLOR_CACHE[name]
+}
+
+var CIV_COLOR_CACHE = {}
+
+function generateCivColor(name) {
+	// Hash the name to a hue; muted saturation so generated colors don't
+	// overpower the hand-picked major civ palette
+	var hash = 0
+	for (var i = 0; i < name.length; i++) {hash = (hash * 31 + name.charCodeAt(i)) | 0}
+	var hue = Math.abs(hash) % 360
+
+	return {
+		city:      hslToRgb(hue, 0.25, 0.92),
+		territory: hslToRgb(hue, 0.45, 0.45)
+	}
+}
+
+function hslToRgb(h, s, l) {
+	var k = n => (n + h / 30) % 12
+	var a = s * Math.min(l, 1 - l)
+	var f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))
+	return [f(0), f(8), f(4)].map(v => Math.round(v * 255))
+}
+
 window.CIV_COLORS = {
 	America:           {city: [255, 255, 255], territory: [ 31,  51, 120]},
 	Arabia:            {city: [146, 221,   9], territory: [ 43,  87,  45]},

@@ -10,12 +10,14 @@ BinaryParser.prototype.parseItem = function(itemConfig, includeJunk) {
 	}
 
 	if (typeof itemConfig == 'function') {
-		(itemConfig.bind(this))()
+		// Custom handler - may return a value
+		return itemConfig.call(this)
 	}
 
 	switch (itemConfig.type) {
 		case 'byte':   return this.getBytes(itemConfig.length)
 		case 'str':    return this.getString(itemConfig.length)
+		case 'guid':   return this.getGuid()
 		case 'varstr': return this.getVarString()
 		case 'int32':  return this.getInt32()
 		case 'int16':  return this.getInt16()
@@ -53,12 +55,50 @@ BinaryParser.prototype.tell = function() {
 	return this.view.tell()
 }
 
+BinaryParser.prototype.seek = function(offset) {
+	return this.view.seek(offset)
+}
+
+BinaryParser.prototype.size = function() {
+	return this.view.byteLength
+}
+
+// Read an int32 at an absolute offset without moving the cursor
+BinaryParser.prototype.peekInt32 = function(offset) {
+	if (offset === undefined) {offset = this.tell()}
+	if (offset < 0 || offset + 4 > this.size()) {return null}
+	var start = this.tell()
+	var value = this.view.getInt32(offset, true)
+	this.seek(start)
+	return value
+}
+
+// Try a parsing function; on exception, rewind and return undefined
+BinaryParser.prototype.attempt = function(fn) {
+	var start = this.tell()
+
+	try {
+		return fn.call(this)
+	}
+	catch (e) {
+		this.seek(start)
+		return undefined
+	}
+}
+
 BinaryParser.prototype.getBytes = function(length) {
 	return this.view.getBytes(length)
 }
 
 BinaryParser.prototype.getString = function(length) {
-	return this.view.getString(length)
+	// Civ V writes strings as UTF-8 (city names with accents, arrows, etc.)
+	return this.view.getString(length, undefined, 'utf8')
+}
+
+BinaryParser.prototype.getGuid = function() {
+	// 16 raw bytes, returned as a hex string
+	var bytes = this.getBytes(16)
+	return Array.prototype.map.call(bytes, b => ('0' + b.toString(16)).slice(-2)).join('')
 }
 
 BinaryParser.prototype.getInt32 = function() {

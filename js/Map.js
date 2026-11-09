@@ -1,4 +1,4 @@
-window.Map = function() {
+window.ReplayMap = function() {
 	this.map  = L.map($('.map').get(0), {
 		attributionControl: false,
 		keyboardPanOffset: 0
@@ -9,15 +9,23 @@ window.Map = function() {
 	return this
 }
 
-Map.prototype.initLayers = function(tiles, events) {
+ReplayMap.prototype.initLayers = function(tiles, events, startTurn, endTurn) {
 	var self = this
 
 	// Track the state of each tile at every turn
-	this.turnStates  = []
+	// Keyed by turn number so lookups work even if the game didn't start at turn 0,
+	// and extended to endTurn so the final turns (with no events) still render
+	this.turnStates  = {}
 	var eventsByTurn = _.groupBy(events, 'turn')
 	var lastState    = {}
 
-	for (var t = events[0].turn; t <= events[events.length - 1].turn; t++) {
+	if (startTurn === undefined) {startTurn = events[0].turn}
+	if (endTurn   === undefined) {endTurn   = events[events.length - 1].turn}
+
+	this.startTurn = startTurn
+	this.endTurn   = endTurn
+
+	for (var t = Math.min(startTurn, events[0].turn); t <= Math.max(endTurn, events[events.length - 1].turn); t++) {
 		// Start by copying last state
 		var state = _.clone(lastState, true)
 
@@ -71,7 +79,7 @@ Map.prototype.initLayers = function(tiles, events) {
 			}
 		}
 
-		this.turnStates.push(state)
+		this.turnStates[t] = state
 
 		lastState = state
 	}
@@ -90,6 +98,12 @@ Map.prototype.initLayers = function(tiles, events) {
 					case 'COAST':
 					case 'OCEAN':
 						this.drawImage(ctx, hex.type, x1, y1, x2 - x1, y2 - y1)
+						break
+					case 'MOUNTAIN':
+					case 'HILL':
+						// 1.0.3.279 stores mountains as their own terrain type; draw a
+						// base underneath so the elevation layer has something to sit on
+						this.drawImage(ctx, 'PLAINS', x1, y1, x2 - x1, y2 - y1)
 						break
 					default:
 						break
@@ -144,8 +158,7 @@ Map.prototype.initLayers = function(tiles, events) {
 				if (!state) {return}
 
 				if (state.owner && hex.type != 'COAST' && hex.type != 'OCEAN') {
-					var civColors = CIV_COLORS[state.owner]
-					var color     = civColors ? civColors.territory : [0, 0, 0]
+					var color     = civColor(state.owner).territory
 					ctx.fillStyle = `rgba(${color.join(',')}, 0.85)`
 					ctx.fill()
 				}
@@ -164,8 +177,7 @@ Map.prototype.initLayers = function(tiles, events) {
 				if (!state) {return}
 
 				if (state.city) {
-					var civColors = CIV_COLORS[state.owner]
-					var color     = civColors ? civColors.city : [255, 255, 255]
+					var color     = civColor(state.owner).city
 					ctx.fillStyle = `rgba(${color.join(',')}, 0.85)`
 					ctx.fill()
 				}
@@ -201,24 +213,18 @@ Map.prototype.initLayers = function(tiles, events) {
 
 	this.controls.switcher.addTo(this.map)
 
-	this.renderTurn(events[0].turn)
+	this.renderTurn(startTurn)
 
 	var north  =   85
 	var west   = -180
 	var south  = north - (tiles   .length * 0.3888888889)
 	var east   = west  + (tiles[0].length * 2.4285714286)
 
-	function onMapClick(e) {
-		console.log(e.latlng)
-	}
-
-	this.map.on('click', onMapClick)
-
 	var bounds = [[south, west], [north, east]]
 	this.map.fitBounds(bounds)
 }
 
-Map.prototype.renderTurn = function(turn) {
+ReplayMap.prototype.renderTurn = function(turn) {
 	this.turn      = turn
 	this.turnState = this.turnStates[turn]
 

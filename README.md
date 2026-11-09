@@ -6,6 +6,8 @@ You can also [direct link](http://aiwebb.github.io/civ5replay/?file=hrbho1q4dtro
 
 Supports Civ5Replay files created since about mid 2013, after the release of Brave New World.
 
+Also supports files from the final patch (1.0.3.279), including Vox Populi / Community Patch games. The parser detects the small layout differences between versions automatically.
+
 ## Background
 
 I do a fair amount of work with mapping, and I've always enjoyed diving into binary files. I was frustrated with the in-game replay viewer in Civ V - it crashes very commonly at the end of a game, it doesn't display the log messages alongside the map, the map itself leaves a bit to be desired, you can't load a replay unless all the mods it used are currently installed, and sharing replays is just impractical enough to not be done.
@@ -19,6 +21,22 @@ I used [jDataView](https://github.com/jDataView/jDataView) to abstract the proce
 I used [Synalyze It](https://www.synalysis.net/) for OS X as my hex editor - it has a nice tagging scheme, a quick-view grid of human readable values for selected bytes, and good support for searching, jumping to various locations, and resizing the window to snap bytes into alignment. Not trying to shill for them, but I tried a dozen other products over the years before I found one with that combination of features, so credit where credit is due for producing a hex editor that doesn't have any major shortcomings.
 
 The end result was the [current JS config](https://github.com/aiwebb/civ5replay/blob/gh-pages/js/Replay.js#L12) describing the file format.
+
+## Development
+
+There is no build step. The app is plain browser JS with vendored libraries in `lib/` (jQuery 2.1, lodash 3.10, Leaflet 0.7.2, Bootstrap 3.3, jDataView).
+
+```bash
+python3 -m http.server 8000   # then open http://localhost:8000 and drop a .Civ5Replay on the page
+```
+
+Headless parser check (Node 18+). It loads `js/BinaryParser.js` + `js/Replay.js` in a VM and validates that the whole file was consumed:
+
+```bash
+node test/parse-replays.js path/to/*.Civ5Replay
+```
+
+Replays are saved under `Documents/My Games/Sid Meier's Civilization 5/Replays/`.
 
 ## Keyboard shortcuts
 

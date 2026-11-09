@@ -1,5 +1,16 @@
 
 
+// FeatureInfos order in the base game + DLC (index == featureId)
+var FEATURE_NAMES = {
+	 0: 'ICE',            1: 'JUNGLE',          2: 'MARSH',          3: 'OASIS',
+	 4: 'FLOOD_PLAINS',   5: 'FOREST',          6: 'FALLOUT',        7: 'CRATER',
+	 8: 'FUJI',           9: 'MESA',           10: 'REEF',          11: 'VOLCANO',
+	12: 'GIBRALTAR',     13: 'GEYSER',         14: 'FOUNTAIN_YOUTH', 15: 'POTOSI',
+	16: 'EL_DORADO',     17: 'ATOLL',          18: 'SRI_PADA',      19: 'MT_SINAI',
+	20: 'MT_KAILASH',    21: 'ULURU',          22: 'LAKE_VICTORIA', 23: 'KILIMANJARO',
+	24: 'SOLOMONS_MINES'
+}
+
 var Replay = function(file, size) {
 	this.parser   = new BinaryParser(file, size)
 	this.meta     = {}
@@ -8,6 +19,20 @@ var Replay = function(file, size) {
 	this.messages = []
 	this.datasets = []
 	this.map      = []
+
+	var eventItemConfig = {
+		turn:   'int32',
+		typeId: 'int32',
+		tiles: {
+			type: 'array',
+			items: {
+				x: 'int16',
+				y: 'int16'
+			}
+		},
+		civId: 'int32',
+		text: 'varstr'
+	}
 
 	this.fileConfig = {
 		game:        {type: 'str', length: 0x04}, // CIV5
@@ -25,7 +50,7 @@ var Replay = function(file, size) {
 		dlc: {
 			type: 'array',
 			items: {
-				id:      {type: 'str', length: 0x10},
+				id:      'guid',
 				enabled: 'int32',
 				name:    'varstr'
 			}
@@ -41,39 +66,47 @@ var Replay = function(file, size) {
 		_2:            'varstr', // 00 00 00 00
 		_3:            'varstr', // 00 00 00 00
 		playerColor:   'varstr',
-		_4:            {type: 'byte', length: 0x08}, // 01 00 00 00 00 00 00 00
+		_4: function() {
+			// Unknown int32, sometimes followed by 4 more bytes before mapScript2:
+			//   BNW-era (2013):  01 00 00 00 00 00 00 00
+			//   1.0.3.279:       06 00 00 00
+			// Pick whichever offset holds a plausible, non-empty string.
+			var start = this.tell()
+
+			for (var skip = 4; skip <= 16; skip += 4) {
+				if (isPlausibleString(this, start + skip, 1, 2048)) {
+					this.seek(start + skip)
+					return
+				}
+			}
+
+			this.seek(start + 8) // legacy layout
+		},
 		mapScript2:    'varstr',
 		_5: function() {
-			// Heuristic to get around something I don't understand :-(
-			// This section still stumps me - it's variable length, but doesn't
-			// seem to follow the conventions of the rest of the file. Probably
-			// something incredibly stupid I'm going to kick myself for in
-			// retrospect. Examples:
+			// Variable-length block of game options we don't decode yet. Rather
+			// than parse it, scan forward for the [startTurn, startYear, endTurn,
+			// endYear, zeroStartYear, zeroEndYear, civs...] sequence and validate it.
+			var start = this.tell()
+			var limit = Math.min(this.size() - 32, start + 8192)
 
-			//	3	3	5	2
-			//	0	0	0	0
-			//	1	1	1	1
-			//	2	2	0	0
-			//	3	3	2	3
-			//	2	5	2	1
-			//	15	1	1	1
-			//	20	3	15	3
-			//	1	9	2	1
-			//	0	10	2	2
-			//	2	15	4	3
-			//	0	1	4	3
-			//		2	0	11
-			//		-1
-			//		0
+			for (var o = start; o < limit; o++) {
+				if (looksLikeTurnHeader(this, o)) {
+					this.seek(o)
+					return
+				}
+			}
 
+			// Fall back to the original heuristic: read int32s until we hit
+			// something that looks like the (misaligned) start year, then rewind
+			this.seek(start)
 			var unknown = 0
 
 			while (Math.abs(unknown) < 100000) {
 				unknown = this.getInt32()
 			}
 
-			// We've hit the start year, need to rewind
-			this.view.seek(this.view.tell() - 7)
+			this.seek(this.tell() - 7)
 		},
 		startTurn:     'int32',
 		startYear:     'int32',
@@ -113,22 +146,34 @@ var Replay = function(file, size) {
 				}
 			}
 		},
-		_7: 'int32',
+		_7: function() {
+			// BNW-era files have an extra int32 before the events array; 1.0.3.279
+			// (and Vox Populi) files don't. Trial-parse the rest of the file both
+			// ways and keep the alignment that lands exactly on a valid tile grid.
+			var start = this.tell()
+
+			for (var skip of [0, 4]) {
+				this.seek(start + skip)
+
+				var ok = this.attempt(function() {
+					this.getArray(eventItemConfig, false)
+					var w = this.getInt32()
+					var h = this.getInt32()
+					var n = this.getInt32()
+					return w > 0 && h > 0 && w < 1024 && h < 1024 && n == w * h
+				})
+
+				if (ok) {
+					this.seek(start + skip)
+					return
+				}
+			}
+
+			this.seek(start + 4) // legacy layout
+		},
 		events: {
 			type: 'array',
-			items: {
-				turn:   'int32',
-				typeId: 'int32',
-				tiles: {
-					type: 'array',
-					items: {
-						x: 'int16',
-						y: 'int16'
-					}
-				},
-				civId: 'int32',
-				text: 'varstr'
-			}
+			items: eventItemConfig
 		},
 		mapWidth:  'int32',
 		mapHeight: 'int32',
@@ -136,7 +181,7 @@ var Replay = function(file, size) {
 			type: 'array',
 			items: {
 				_1:          'int32', // always 1?
-				_2:          'int32', // always 267?
+				_2:          'int32', // last turn of the game
 				elevationId: 'int8',
 				typeId:      'int8',
 				featureId:   'int8',
@@ -146,6 +191,53 @@ var Replay = function(file, size) {
 	}
 
 	return this
+}
+
+// Is there a length-prefixed string at `offset` with a length in [min, max]
+// made only of printable bytes?
+function isPlausibleString(parser, offset, min, max) {
+	var length = parser.peekInt32(offset)
+	if (length === null || length < min || length > max) {return false}
+	if (offset + 4 + length > parser.size()) {return false}
+
+	var bytes = new Uint8Array(parser.view.buffer, parser.view.byteOffset + offset + 4, length)
+
+	for (var i = 0; i < bytes.length; i++) {
+		if (bytes[i] < 0x20 && bytes[i] != 0x09) {return false}
+	}
+
+	return true
+}
+
+// Does `o` point at startTurn, followed by a sane year/turn/civ-list layout?
+function looksLikeTurnHeader(parser, o) {
+	var startTurn = parser.peekInt32(o)
+	var startYear = parser.peekInt32(o + 4)
+	var endTurn   = parser.peekInt32(o + 8)
+
+	if (startTurn === null || startTurn < 0 || startTurn > 2000)     {return false}
+	if (startYear === null || Math.abs(startYear) > 100000)          {return false}
+	if (endTurn   === null || endTurn < startTurn || endTurn > 5000) {return false}
+	if (!isPlausibleString(parser, o + 12, 1, 64))                   {return false}
+
+	// endYear string, then zeroStartYear + zeroEndYear, then the civs array
+	var afterYear = o + 16 + parser.peekInt32(o + 12)
+	var civCount  = parser.peekInt32(afterYear + 8)
+	if (civCount === null || civCount < 1 || civCount > 128) {return false}
+
+	// First civ: four int32s, then the leader name string
+	return isPlausibleString(parser, afterYear + 12 + 16, 1, 256)
+}
+
+// Strip Civ V text markup like [COLOR_POSITIVE_TEXT], [ENDCOLOR], [ICON_PEACE], [NEWLINE]
+function stripMarkup(text) {
+	if (!text) {return text}
+	return text
+		.replace(/\[NEWLINE\]/g, ' ')
+		.replace(/\[(COLOR_[A-Z_]+|ENDCOLOR|ICON_[A-Z_0-9]+)\]/g, '')
+		.replace(/\s+([.,;:)])/g, '$1')
+		.replace(/\s{2,}/g, ' ')
+		.trim()
 }
 
 Replay.prototype.process = function() {
@@ -176,6 +268,7 @@ Replay.prototype.process = function() {
 
 		event.index = i
 		event.civ   = this.civs[event.civId] ? this.civs[event.civId].name : null
+		event.text  = stripMarkup(event.text)
 
 		// Add type name
 		switch (event.typeId) {
@@ -204,7 +297,7 @@ Replay.prototype.process = function() {
 		else if (event.type == 'CITY_RAZED') {
 			event.x    = event.tiles[0].x
 			event.y    = event.tiles[0].y
-			event.city = cities[event.x + ',' + event.y]
+			event.city = cities[event.x + ',' + event.y] || {name: 'A city'}
 			event.text = `${event.city.name} has been burned to the ground by ${event.civ}!`
 
 			// Mass razings are compounded into one event; we want to separate them
@@ -212,14 +305,15 @@ Replay.prototype.process = function() {
 				var eventCopy  = Object.assign({}, event)
 				eventCopy.x    = tile.x
 				eventCopy.y    = tile.y
-				eventCopy.city = cities[eventCopy.x + ',' + eventCopy.y]
+				eventCopy.city = cities[eventCopy.x + ',' + eventCopy.y] || {name: 'A city'}
 				eventCopy.text = `${eventCopy.city.name} has been burned to the ground by ${eventCopy.civ}!`
 				eventsToAdd.push(eventCopy)
 			})
 		}
 		else if (event.type == 'CITIES_TRANSFERRED') {
 			var cityNames = _.map(event.tiles, tile => {
-				return cities[tile.x + ',' + tile.y].name
+				var city = cities[tile.x + ',' + tile.y]
+				return city ? city.name : 'an unknown city'
 			})
 
 			if (cityNames.length == 1) {
@@ -272,24 +366,13 @@ Replay.prototype.process = function() {
 			case 4:  tile.type = 'SNOW';      break
 			case 5:  tile.type = 'COAST';     break
 			case 6:  tile.type = 'OCEAN';     break
+			case 7:  tile.type = 'MOUNTAIN';  break
+			case 8:  tile.type = 'HILL';      break
 			default: tile.type = tile.typeId; break
 		}
 
-		switch (tile.featureId) {
-			case -1: tile.feature = 'NO_FEATURE';      break
-			case  0: tile.feature = 'ICE';             break
-			case  1: tile.feature = 'JUNGLE';          break
-			case  2: tile.feature = 'MARSH';           break
-			case  3: tile.feature = 'OASIS';           break
-			case  4: tile.feature = 'FLOOD_PLAINS';    break
-			case  5: tile.feature = 'FOREST';          break
-			case 15: tile.feature = 'CERRO_DE_POTOSI'; break
-			case 17: tile.feature = 'ATOLL';           break
-			case 18: tile.feature = 'SRI_PADA';        break
-			case 19: tile.feature = 'MT_SINAI';        break
-			default: tile.feature = tile.featureId;    break
-			// TODO: enumerate the rest of the natural wonders and feature types
-		}
+		tile.feature = FEATURE_NAMES[tile.featureId] || (tile.featureId == -1 ? 'NO_FEATURE' : tile.featureId)
+		tile.naturalWonder = tile.featureId >= 7 && tile.featureId != 17 && !!FEATURE_NAMES[tile.featureId]
 	})
 
 	// Chunk the tiles a 2D array
@@ -303,27 +386,3 @@ Replay.prototype.process = function() {
 	}
 }
 
-
-// switch (tile.type) {
-// 	case 'GRASSLAND': setPixel(x * 20, (replay.mapHeight - y - 1) * 20, 115, 134,  57); break
-// 	case 'PLAINS':    setPixel(x * 20, (replay.mapHeight - y - 1) * 20, 129, 122,  71); break
-// 	case 'DESERT':    setPixel(x * 20, (replay.mapHeight - y - 1) * 20, 181, 182, 148); break
-// 	case 'TUNDRA':    setPixel(x * 20, (replay.mapHeight - y - 1) * 20, 115, 109, 107); break
-// 	case 'SNOW':      setPixel(x * 20, (replay.mapHeight - y - 1) * 20, 242, 251, 255); break
-// 	case 'COAST':     setPixel(x * 20, (replay.mapHeight - y - 1) * 20,  90, 145, 143); break
-// 	case 'OCEAN':     setPixel(x * 20, (replay.mapHeight - y - 1) * 20,  49,  77,  99); break
-// }
-	//
-	//
-	//
-	//
-	//
-	//
-	//
-	// for (var y = 0; y < replay.mapHeight; y++) {
-	// 	for (var x = 0; x < replay.mapWidth; x++) {
-	// 		var tile = replay.tiles[(y * replay.mapWidth) + x]
-	//
-	// 	}
-	// }
-// }

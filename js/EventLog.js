@@ -6,7 +6,7 @@ window.EventLog = function(events) {
 	// Types
 	this.types = []
 
-	$('#event-select').on('change', e => {
+	$('#event-select').off('change.eventlog').on('change.eventlog', e => {
 		this.setTypes($(e.target).val())
 	})
 
@@ -57,7 +57,13 @@ EventLog.prototype.renderTurn = function(turn) {
 		return $(this).attr('turn') <= turn
 	}).addClass('active')
 
-	var $lastMessage  = this.$messages.find('.message.active').last()
+	var $lastMessage  = this.$messages.find('.message.active:not(.hidden)').last()
+
+	if (!$lastMessage.length) {
+		this.$messages.finish().animate({scrollTop: 0}, 200)
+		return
+	}
+
 	var messageOffset = $lastMessage.offset().top
 	var listOffset    = this.$messages.offset().top
 	var listScroll    = this.$messages.scrollTop()
