@@ -20,7 +20,7 @@ ReplayViewer.prototype.init = function() {
 	this.turn = getParameterByName('turn')
 
 	if (this.file) {
-		this.loadFromDropbox(this.file)
+		this.loadFromUrl(this.file)
 	}
 
 	function getParameterByName(name) {
@@ -32,21 +32,19 @@ ReplayViewer.prototype.init = function() {
 	}
 }
 
-ReplayViewer.prototype.loadFromDropbox = function(file) {
-	// e.g. https://dl.dropboxusercontent.com/1/view/hrbho1q4dtro8pa/Ramesses%20II_0267%20AD-1987_42%20(9).Civ5Replay
-	// file = 'hrbho1q4dtro8pa/Ramesses%20II_0267%20AD-1987_42%20(9).Civ5Replay'
+ReplayViewer.prototype.loadFromUrl = function(file) {
+	// `file` is either a path relative to the site (e.g. replays/foo.Civ5Replay)
+	// or a full URL to a host that allows cross-origin requests.
+	// (The old Dropbox /1/view/ API this used to rely on has been retired.)
+	var url = /^https?:\/\//.test(file) ? file : encodeURI(file)
 
-	var self = this
-	var xhr  = new XMLHttpRequest()
-
-	xhr.open('GET', 'https://dl.dropboxusercontent.com/1/view/' + file, true)
-	xhr.responseType = 'arraybuffer'
-
-	xhr.onload = function(e) {
-		self.process(this.response, e.total)
-	}
-
-	xhr.send()
+	fetch(url)
+		.then(response => {
+			if (!response.ok) {throw new Error(`HTTP ${response.status}`)}
+			return response.arrayBuffer()
+		})
+		.then(buffer => this.process(buffer, buffer.byteLength))
+		.catch(err => console.error(`Couldn't load replay from ${url}:`, err))
 }
 
 ReplayViewer.prototype.process = function(data, length) {

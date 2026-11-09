@@ -1,8 +1,8 @@
 # Civilization V Replay Viewer
 
-Drag a .Civ5Replay file onto the page to load a replay: http://aiwebb.github.io/civ5replay.
+Drag a .Civ5Replay file onto the page to load a replay: https://prxsto.github.io/civ5replay
 
-You can also [direct link](http://aiwebb.github.io/civ5replay/?file=hrbho1q4dtro8pa/Ramesses%20II_0267%20AD-1987_42%20(9).Civ5Replay&turn=177) a URL with a Dropbox file ID included to easily share replays with others.
+Example: [Wu Zetian, 4000 BC – 2006 AD](https://prxsto.github.io/civ5replay/?file=replays/wu-zetian-2006-ad.Civ5Replay)
 
 Supports Civ5Replay files created since about mid 2013, after the release of Brave New World.
 
@@ -58,11 +58,9 @@ Pass a `turn` parameter to automatically start on that turn.
 
 #### file
 
-Pass a `file` parameter to link directly to a .Civ5Replay file hosted on Dropbox. This should be the portion of the sharing URL that is unique to the file. For example, if the sharing URL is
+Pass a `file` parameter to load a replay automatically. It can be a path within the site (put replays in `replays/`), or a full URL to a host that serves files with CORS enabled:
 
-    https://dl.dropboxusercontent.com/1/view/hrbho1q4dtro8pa/Ramesses%20II_0267%20AD-1987_42%20(9).Civ5Replay
-
-then the `file` parameter would be `hrbho1q4dtro8pa/Ramesses%20II_0267%20AD-1987_42%20(9).Civ5Replay`.
+    ?file=replays/wu-zetian-2006-ad.Civ5Replay&turn=150
 
 ## TODO / contributing
 
