@@ -8,6 +8,8 @@ import {TimelineBar, SPEEDS} from './components/TimelineBar'
 import {EventLog} from './components/EventLog'
 import {StatsPanel} from './components/StatsPanel'
 import {LayerPanel, LAYER_INFO} from './components/LayerPanel'
+import {YearBadge} from './components/YearBadge'
+import {DEFAULT_SPEED, isKnownSpeed, type GameSpeed} from './model/calendar'
 
 const EXAMPLE = 'replays/wu-zetian-2006-ad.Civ5Replay'
 const DEFAULT_TYPES: EventType[] = ['MESSAGE', 'CITY_FOUNDED', 'CITIES_TRANSFERRED', 'CITY_RAZED', 'RELIGION_FOUNDED', 'PANTHEON_SELECTED']
@@ -34,6 +36,7 @@ export function App() {
 	const [civFilter, setCivFilter] = useState<number | null>(null)
 	const [selected, setSelected] = useState<ReplayEvent | null>(null)
 	const [tab, setTab]           = useState<'events' | 'stats'>('events')
+	const [calendar, setCalendar] = useState<GameSpeed>(DEFAULT_SPEED)
 	const fileInput = useRef<HTMLInputElement>(null)
 
 	useEffect(() => {
@@ -52,6 +55,7 @@ export function App() {
 			const replay   = parseReplay(buffer)
 			const timeline = new Timeline(replay)
 			setLoaded({replay, timeline, name})
+			setCalendar(isKnownSpeed(replay.meta.gameSpeed) ? replay.meta.gameSpeed : DEFAULT_SPEED)
 			setError(null)
 			setSelected(null)
 			setCivFilter(null)
@@ -204,8 +208,14 @@ export function App() {
 		return counts
 	}, [loaded])
 
+	// Clicking an event jumps to its turn and highlights its tiles on the map
 	const selectEvent = useCallback((e: ReplayEvent) => {
-		setSelected(prev => prev === e ? null : e)
+		setPlaying(false)
+		setSelected(prev => {
+			if (prev === e) return null
+			return e.tiles.length ? e : null
+		})
+		setTurnRaw(e.turn)
 	}, [])
 
 	const toggleType = useCallback((type: EventType) => {
@@ -272,6 +282,14 @@ export function App() {
 							/>
 						)}
 						<LayerPanel layers={layers} onToggle={toggleLayer} />
+						<YearBadge
+							turn={turn}
+							startTurn={loaded.replay.meta.startTurn}
+							startYear={loaded.replay.meta.startYear}
+							speed={calendar}
+							fileSpeed={isKnownSpeed(loaded.replay.meta.gameSpeed) ? loaded.replay.meta.gameSpeed : null}
+							onSpeed={setCalendar}
+						/>
 					</section>
 
 					<aside className="sidebar">
@@ -286,6 +304,7 @@ export function App() {
 								types={types}
 								civFilter={civFilter}
 								selected={selected}
+								smoothScroll={!playing || SPEEDS[speed].ms >= 500}
 								onToggleType={toggleType}
 								onCivFilter={setCivFilter}
 								onSelect={selectEvent}
@@ -296,7 +315,6 @@ export function App() {
 					</aside>
 
 					<TimelineBar
-						replay={loaded.replay}
 						turn={turn}
 						start={start}
 						end={end}

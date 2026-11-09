@@ -12,7 +12,9 @@ Supports replays from Brave New World (mid-2013) through the final patch (1.0.3.
 
 - Hex map with toggleable layers: terrain, features, hills & mountains, natural wonders, territory, borders, cities, city names, hex grid
 - Pan (drag), zoom (wheel / double-click / buttons), hover a tile for terrain, owner and city
-- Event log grouped by turn, filterable by event type and civilization; click an event to highlight it on the map
+- In-game year for every turn (from the game-speed calendar in `CIV5GameSpeeds.xml`), with a speed override
+- Event feed that keeps the current turn centered (future turns dimmed), filterable by event type and civilization; click an event to jump to it and highlight it on the map
+- Color-coded messages: civ names in their civ colors (city-states grey), key phrases tinted by category (war, peace, captures, razing, golden ages, wonders, science, culture, religion, victories)
 - Stats tab: any of the ~27 per-civ datasets in the replay (score, techs, military, gold…) charted over time, with a ranking at the current turn
 - Timeline with an event-density strip, playback at five speeds, linkable `?file=…&turn=…` URLs
 
@@ -39,7 +41,9 @@ REPLAY_DIR=~/path/to/replays npm test
 |---|---|
 | `src/parser/` | `.Civ5Replay` binary parser (`parseReplay.ts` documents the file layout) and its tests |
 | `src/model/timeline.ts` | Replays events into per-turn ownership + city snapshots |
-| `src/model/civColors.ts` | In-game civ colors; generated colors for city-states and modded civs |
+| `src/model/civColors.ts` | In-game civ colors (city-states grey, generated colors for modded civs) |
+| `src/model/calendar.ts` | Turn → year per game speed |
+| `src/model/eventStyle.ts` | Event categories and message color-coding |
 | `src/map/` | Hex geometry and canvas rendering (static base layer + per-turn overlay) |
 | `src/components/` | React UI: map, timeline, event log, stats, layer panel |
 | `public/tiles/` | Terrain textures |
@@ -71,7 +75,6 @@ Key | Action
 
 - Tile artwork for marsh, oasis, flood plains and natural wonders (currently simple procedural marks)
 - Decode the remaining unknown header block (game options) and civ fields (likely player color / slot type)
-- Year labels per turn (needs the game-speed calendar)
 - Religion spread / war-and-peace layers from event text
 
 ## Background

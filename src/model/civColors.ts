@@ -56,23 +56,44 @@ const CIV_COLORS: Record<string, CivColor> = {
 
 const cache = new Map<string, CivColor>()
 
-/** Color for a civ by name. Unknown civs (city-states, mods) get a stable generated color. */
+/** City-states are deliberately neutral so they never read as a major civ. */
+export const CITY_STATE_COLOR: CivColor = {city: [40, 40, 40], territory: [128, 128, 128]}
+
+/** Color for a civ by name. City-states are grey; unknown major civs (mods) get a stable generated color. */
 export function civColor(name: string | undefined, isCityState = false): CivColor {
+	if (isCityState) return CITY_STATE_COLOR
 	if (!name) return {city: [255, 255, 255], territory: [60, 60, 60]}
-	if (CIV_COLORS[name] && !isCityState) return CIV_COLORS[name]
+	if (CIV_COLORS[name]) return CIV_COLORS[name]
 
 	let color = cache.get(name)
 	if (!color) {
 		let hash = 0
 		for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0
-		const hue = Math.abs(hash) % 360
-		// City-states are muted so they don't compete with the major civ palette
-		color = isCityState
-			? {city: hsl(hue, 0.2, 0.95), territory: hsl(hue, 0.35, 0.55)}
-			: {city: hsl(hue, 0.3, 0.9), territory: hsl(hue, 0.55, 0.42)}
+		color = {city: hsl(Math.abs(hash) % 360, 0.3, 0.9), territory: hsl(Math.abs(hash) % 360, 0.55, 0.42)}
 		cache.set(name, color)
 	}
 	return color
+}
+
+/**
+ * A version of the civ's color that is legible as text or a thin line on the
+ * dark UI surface (WCAG contrast >= 4.5). Very dark civ colors are lightened
+ * toward white, keeping their hue.
+ */
+export function readable(c: RGB, background: RGB = [20, 32, 48]): string {
+	const lum = (v: RGB) => {
+		const ch = v.map(x => {
+			const s = x / 255
+			return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+		})
+		return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]
+	}
+	const contrast = (a: RGB) => (lum(a) + 0.05) / (lum(background) + 0.05)
+	let out = c
+	for (let t = 0; t <= 1 && contrast(out) < 4.5; t += 0.05) {
+		out = c.map(v => Math.round(v + (255 - v) * t)) as RGB
+	}
+	return `rgb(${out[0]},${out[1]},${out[2]})`
 }
 
 export const rgb  = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`

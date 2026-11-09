@@ -247,9 +247,9 @@ export function HexMap({replay, state, layers, textures, highlight}: Props) {
 			/>
 
 			<div className="map-zoom">
-				<button onClick={() => zoomAt(1.25, wrapRef.current!.clientWidth / 2, wrapRef.current!.clientHeight / 2)} title="Zoom in (+)">+</button>
-				<button onClick={() => zoomAt(0.8, wrapRef.current!.clientWidth / 2, wrapRef.current!.clientHeight / 2)} title="Zoom out (−)">−</button>
-				<button onClick={fit} title="Fit map (0)">⤢</button>
+				<button onClick={() => zoomAt(1.25, wrapRef.current!.clientWidth / 2, wrapRef.current!.clientHeight / 2)} data-tip="Zoom in · +" data-tip-side="left" aria-label="Zoom in">+</button>
+				<button onClick={() => zoomAt(0.8, wrapRef.current!.clientWidth / 2, wrapRef.current!.clientHeight / 2)} data-tip="Zoom out · −" data-tip-side="left" aria-label="Zoom out">−</button>
+				<button onClick={fit} data-tip="Fit the whole map · 0" data-tip-side="left" aria-label="Fit map">⤢</button>
 			</div>
 
 			{hover && hoverInfo && (

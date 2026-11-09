@@ -1,6 +1,6 @@
 import {useMemo, useRef, useState} from 'react'
 import type {Replay} from '../parser/types'
-import {civColor, type RGB} from '../model/civColors'
+import {civColor, readable} from '../model/civColors'
 
 interface Props {
 	replay: Replay
@@ -30,14 +30,6 @@ const prettyDataset = (key: string) => {
 		.replace(/^\w/, c => c.toUpperCase())
 }
 
-/** Lift very dark civ colors so the line stays visible on the dark panel. */
-function lineColor(c: RGB) {
-	const lum = (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255
-	if (lum >= 0.28) return `rgb(${c.join(',')})`
-	const k = 0.28 / Math.max(lum, 0.05)
-	return `rgb(${c.map(v => Math.min(255, Math.round(v * k + 40))).join(',')})`
-}
-
 function niceMax(v: number) {
 	if (v <= 0) return 1
 	const p = 10 ** Math.floor(Math.log10(v))
@@ -63,7 +55,7 @@ export function StatsPanel({replay, turn, onTurn}: Props) {
 			.filter(c => includeCityStates || !c.isCityState)
 			.map(c => ({
 				civ: c,
-				color: lineColor(civColor(c.name, c.isCityState).territory),
+				color: readable(civColor(c.name, c.isCityState).territory),
 				points: (data[c.id] ?? []).filter(p => p.turn >= start && p.turn <= end),
 			}))
 			.filter(s => s.points.length > 0)
