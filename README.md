@@ -10,8 +10,10 @@ Supports replays from Brave New World (mid-2013) through the final patch (1.0.3.
 
 ## Features
 
-- Hex map with toggleable layers: terrain, features, hills & mountains, natural wonders, territory, borders, cities, city names, hex grid
+- Hex map with toggleable layers: terrain, features, hills & mountains, natural wonders, territory, borders, cities & names, burning cities, hex grid
 - Pan (drag), zoom (wheel / double-click / buttons), hover a tile for terrain, owner and city
+- Follow mode: the camera smoothly zooms and pans to frame each turn's events, and the places where things happen pulse
+- Burning cities: flames in the razing civ's colour on a city and its neighbouring tiles while it is razed
 - In-game year for every turn (from the game-speed calendar in `CIV5GameSpeeds.xml`), with a speed override
 - Event feed that keeps the current turn centered (future turns dimmed), filterable by event type and civilization; click an event to jump to it and highlight it on the map
 - Color-coded messages: civ names in their civ colors (city-states grey), key phrases tinted by category (war, peace, captures, razing, golden ages, wonders, science, culture, religion, victories)
@@ -63,7 +65,7 @@ Key | Action
 `↑` `↓` | Back / forward ten turns
 `Home` `PgUp` / `End` `PgDn` | First / last turn
 `+` `-` `0` | Zoom in / out / fit
-`T` `F` `E` `W` `R` `B` `C` `N` `G` | Toggle terrain, features, elevation, wonders, territory, borders, cities, names, grid
+`T` `F` `E` `W` `R` `B` `C` `X` `G` | Toggle terrain, features, elevation, wonders, territory, borders, cities & names, burning cities, grid
 `Esc` | Clear highlighted event
 
 ## Query parameters

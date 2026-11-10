@@ -9,6 +9,29 @@ export interface City {
 	foundedTurn: number
 }
 
+export interface Razing {
+	x: number
+	y: number
+	cityName: string
+	/** The civ burning the city */
+	civId: number
+	/** Turn the razing began ("was set ablaze"), or the razed turn if unknown */
+	startTurn: number
+	/** Turn the city was burned to the ground */
+	endTurn: number
+}
+
+export interface Fire {
+	x: number
+	y: number
+	civId: number
+	/** 1 while burning, fading out over the turns after the city is gone */
+	intensity: number
+}
+
+/** Turns the smoke lingers after a city is gone */
+const FIRE_AFTERGLOW = 3
+
 export interface TurnState {
 	/** owner civId per tile index (y * width + x), -1 = unowned */
 	owners: Int16Array
@@ -27,6 +50,7 @@ export class Timeline {
 	readonly height: number
 	private states: TurnState[] = []
 	readonly eventsByTurn = new Map<number, ReplayEvent[]>()
+	readonly razings: Razing[] = []
 
 	constructor(replay: Replay) {
 		const {meta, events} = replay
@@ -81,6 +105,36 @@ export class Timeline {
 
 			this.states.push({owners: owners.slice(), cities: [...cities.values()]})
 		}
+
+		// Razings run from "<city> was set ablaze" to "burned to the ground".
+		// Match on the tile, since cities can be refounded with the same name.
+		const lastRazedAt = new Map<string, number>()
+		for (const e of events) {
+			if (e.type !== 'CITY_RAZED' || e.x === undefined || e.y === undefined) continue
+			const key = `${e.x},${e.y}`
+			const after = lastRazedAt.get(key) ?? -Infinity
+			const ablaze = events.filter(a =>
+				a.type === 'MESSAGE' && /set ablaze/.test(a.text) &&
+				a.tiles.some(t => t.x === e.x && t.y === e.y) &&
+				a.turn <= e.turn && a.turn > after)
+			const start = ablaze.length ? ablaze[ablaze.length - 1].turn : e.turn
+			this.razings.push({x: e.x, y: e.y, cityName: e.cityName ?? '', civId: e.civId, startTurn: start, endTurn: e.turn})
+			lastRazedAt.set(key, e.turn)
+		}
+	}
+
+	/** Fire markers for the given turn: the city tile plus its six neighbours, for each razing in progress. */
+	firesAt(turn: number, neighbors: (x: number, y: number) => [number, number][]): Fire[] {
+		const out: Fire[] = []
+		for (const r of this.razings) {
+			if (turn < r.startTurn || turn > r.endTurn + FIRE_AFTERGLOW) continue
+			const intensity = turn <= r.endTurn ? 1 : 1 - (turn - r.endTurn) / (FIRE_AFTERGLOW + 1)
+			for (const [x, y] of [[r.x, r.y] as [number, number], ...neighbors(r.x, r.y)]) {
+				if (x < 0 || y < 0 || x >= this.width || y >= this.height) continue
+				out.push({x, y, civId: r.civId, intensity: x === r.x && y === r.y ? intensity : intensity * 0.8})
+			}
+		}
+		return out
 	}
 
 	/**

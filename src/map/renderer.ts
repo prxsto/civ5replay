@@ -1,6 +1,6 @@
 import type {Replay, Tile} from '../parser/types'
-import type {TurnState} from '../model/timeline'
-import {civColor, rgb, rgba} from '../model/civColors'
+import type {Fire, TurnState} from '../model/timeline'
+import {civColor, rgb, rgba, type RGB} from '../model/civColors'
 import {HEX_RADIUS, HEX_W, hexCenter, hexPath, hexVertex, mapPixelSize, neighbor} from './hexGeometry'
 
 export interface Layers {
@@ -11,7 +11,7 @@ export interface Layers {
 	territory: boolean
 	borders: boolean
 	cities: boolean
-	cityNames: boolean
+	fires: boolean
 	grid: boolean
 }
 
@@ -23,7 +23,7 @@ export const DEFAULT_LAYERS: Layers = {
 	territory: true,
 	borders: true,
 	cities: true,
-	cityNames: true,
+	fires: true,
 	grid: false,
 }
 
@@ -164,7 +164,7 @@ function drawFeature(ctx: CanvasRenderingContext2D, feature: string, textures: T
 }
 
 /** Per-turn layers: territory, borders, cities, wonders. Labels are drawn in screen space by the map component. */
-export function renderOverlay(replay: Replay, state: TurnState, layers: Layers): HTMLCanvasElement {
+export function renderOverlay(replay: Replay, state: TurnState, layers: Layers, fires: Fire[] = []): HTMLCanvasElement {
 	const {mapWidth: W, mapHeight: H} = replay.meta
 	const size   = mapPixelSize(W, H)
 	const canvas = makeCanvas(size.w, size.h)
@@ -218,6 +218,13 @@ export function renderOverlay(replay: Replay, state: TurnState, layers: Layers):
 		}
 	}
 
+	if (layers.fires) {
+		for (const f of fires) {
+			const {cx, cy} = hexCenter(f.x, f.y, H)
+			drawFlame(ctx, cx, cy, colorOf(f.civId).territory, f.intensity)
+		}
+	}
+
 	if (layers.wonders) {
 		for (const row of replay.tiles) {
 			for (const tile of row) {
@@ -248,6 +255,49 @@ export function renderOverlay(replay: Replay, state: TurnState, layers: Layers):
 	}
 
 	return canvas
+}
+
+/** A half-transparent flame tinted with the burning civ's colour. */
+function drawFlame(ctx: CanvasRenderingContext2D, cx: number, cy: number, color: RGB, intensity: number) {
+	const r = HEX_RADIUS * 0.72
+	const lighten = (c: RGB, t: number): RGB => c.map(v => Math.round(v + (255 - v) * t)) as RGB
+	const base = cy + r * 0.62
+
+	const flame = (scale: number) => {
+		const h = r * 1.5 * scale
+		const w = r * 0.62 * scale
+		ctx.beginPath()
+		ctx.moveTo(cx, base - h)
+		ctx.bezierCurveTo(cx + w * 0.35, base - h * 0.62, cx + w * 1.15, base - h * 0.45, cx + w * 0.9, base - h * 0.12)
+		ctx.bezierCurveTo(cx + w * 0.75, base + h * 0.06, cx + w * 0.3, base + h * 0.1, cx, base + h * 0.1)
+		ctx.bezierCurveTo(cx - w * 0.3, base + h * 0.1, cx - w * 0.75, base + h * 0.06, cx - w * 0.9, base - h * 0.12)
+		ctx.bezierCurveTo(cx - w * 1.15, base - h * 0.45, cx - w * 0.35, base - h * 0.62, cx, base - h)
+		ctx.closePath()
+	}
+
+	ctx.save()
+	ctx.globalAlpha = 0.6 * intensity
+	ctx.shadowColor = rgba(lighten(color, 0.3), 0.9)
+	ctx.shadowBlur = 8
+	flame(1)
+	const outer = ctx.createLinearGradient(cx, base - r * 1.5, cx, base)
+	outer.addColorStop(0, rgba(lighten(color, 0.45), 0.9))
+	outer.addColorStop(1, rgba(color, 1))
+	ctx.fillStyle = outer
+	ctx.fill()
+	ctx.shadowBlur = 0
+	ctx.lineWidth = 1
+	ctx.strokeStyle = 'rgba(0,0,0,0.5)'
+	ctx.stroke()
+	// Warm inner core so it reads as fire whatever the civ colour
+	flame(0.62)
+	const core = ctx.createLinearGradient(cx, base - r * 0.95, cx, base)
+	core.addColorStop(0, 'rgba(255, 236, 150, 0.95)')
+	core.addColorStop(0.55, 'rgba(255, 170, 60, 0.95)')
+	core.addColorStop(1, 'rgba(230, 80, 30, 0.95)')
+	ctx.fillStyle = core
+	ctx.fill()
+	ctx.restore()
 }
 
 function drawStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {

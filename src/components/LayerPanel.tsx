@@ -8,8 +8,8 @@ export const LAYER_INFO: {key: keyof Layers; label: string; hotkey: string}[] = 
 	{key: 'wonders',   label: 'Natural wonders', hotkey: 'w'},
 	{key: 'territory', label: 'Territory',       hotkey: 'r'},
 	{key: 'borders',   label: 'Borders',         hotkey: 'b'},
-	{key: 'cities',    label: 'Cities',          hotkey: 'c'},
-	{key: 'cityNames', label: 'City names',      hotkey: 'n'},
+	{key: 'cities',    label: 'Cities & names',  hotkey: 'c'},
+	{key: 'fires',     label: 'Burning cities',  hotkey: 'x'},
 	{key: 'grid',      label: 'Hex grid',        hotkey: 'g'},
 ]
 

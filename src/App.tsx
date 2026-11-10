@@ -3,14 +3,15 @@ import {parseReplay} from './parser/parseReplay'
 import type {EventType, Replay, ReplayEvent} from './parser/types'
 import {Timeline} from './model/timeline'
 import {DEFAULT_LAYERS, loadTextures, type Layers, type Textures} from './map/renderer'
-import {HexMap} from './components/HexMap'
+import {HexMap, type Pulse} from './components/HexMap'
 import {TimelineBar, SPEEDS} from './components/TimelineBar'
 import {EventLog} from './components/EventLog'
 import {StatsPanel} from './components/StatsPanel'
 import {LayerPanel, LAYER_INFO} from './components/LayerPanel'
 import {YearBadge} from './components/YearBadge'
 import {DEFAULT_SPEED, isKnownSpeed, type GameSpeed} from './model/calendar'
-import {buildNameMatcher} from './model/eventStyle'
+import {buildNameMatcher, categorize, CATEGORY_INFO, victoryColor} from './model/eventStyle'
+import {neighbor} from './map/hexGeometry'
 import {eventFocus, turnFocus, type TilePos} from './model/focus'
 
 const EXAMPLE = 'replays/wu-zetian-2006-ad.Civ5Replay'
@@ -229,10 +230,39 @@ export function App() {
 		setHighlight(focus.length ? focus : null)
 	}, [loaded, matcher, selected])
 
+	// Follow-mode camera target. At fast playback, look at the last few turns
+	// together so the camera glides instead of lurching every frame.
+	const followWindow = playing ? Math.max(1, Math.round(700 / SPEEDS[speed].ms)) : 1
 	const follow = useMemo(() => {
 		if (!loaded) return null
-		const tiles = turnFocus(loaded.timeline, turn)
+		const tiles: TilePos[] = []
+		for (let t = turn - followWindow + 1; t <= turn; t++) tiles.push(...turnFocus(loaded.timeline, t))
 		return tiles.length ? tiles : null
+	}, [loaded, turn, followWindow])
+
+	// Places where something happened this turn, pulsed on the map in the event's colour
+	const pulses = useMemo(() => {
+		if (!loaded) return []
+		const seen = new Set<string>()
+		const out: Pulse[] = []
+		for (const e of loaded.timeline.eventsByTurn.get(turn) ?? []) {
+			if (e.type === 'TILES_CLAIMED') continue
+			const category = categorize(e)
+			const color = category === 'victory' ? victoryColor(e.text) : CATEGORY_INFO[category].color
+			for (const t of e.tiles) {
+				const key = `${t.x},${t.y}`
+				if (seen.has(key)) continue
+				seen.add(key)
+				out.push({x: t.x, y: t.y, color, label: e.cityName})
+			}
+		}
+		return out
+	}, [loaded, turn])
+
+	const fires = useMemo(() => {
+		if (!loaded) return []
+		const nbrs = (x: number, y: number) => [0, 1, 2, 3, 4, 5].map(edge => neighbor(x, y, edge))
+		return loaded.timeline.firesAt(turn, nbrs)
 	}, [loaded, turn])
 
 	const toggleType = useCallback((type: EventType) => {
@@ -297,6 +327,9 @@ export function App() {
 								textures={textures}
 								highlight={highlight}
 								follow={follow}
+								followMs={playing ? Math.min(1100, SPEEDS[speed].ms * followWindow * 0.9) : 1100}
+								pulses={pulses}
+								fires={fires}
 							/>
 						)}
 						<LayerPanel layers={layers} onToggle={toggleLayer} />

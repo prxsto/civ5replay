@@ -1,8 +1,8 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import type {Replay} from '../parser/types'
-import type {TurnState} from '../model/timeline'
+import type {Fire, TurnState} from '../model/timeline'
 import {civColor, rgb} from '../model/civColors'
-import {HEX_RADIUS, hexCenter, mapPixelSize, tileAt} from '../map/hexGeometry'
+import {HEX_RADIUS, HEX_W, hexCenter, mapPixelSize, tileAt} from '../map/hexGeometry'
 import {renderBase, renderOverlay, type Layers, type Textures} from '../map/renderer'
 import {NATURAL_WONDER_NAMES} from '../parser/parseReplay'
 
@@ -13,9 +13,29 @@ interface Props {
 	textures: Textures | null
 	/** Tiles of the selected event: highlighted, and brought into view */
 	highlight: {x: number; y: number}[] | null
-	/** Where this turn's action is; the map drifts toward it when zoomed in */
+	/** Where this turn's action is; in follow mode the camera frames it */
 	follow: {x: number; y: number}[] | null
+	/** How long a follow-mode camera move should take */
+	followMs: number
+	/** Places to pulse this turn */
+	pulses: Pulse[]
+	/** Burning-city markers for this turn */
+	fires: Fire[]
 }
+
+export interface Pulse {
+	x: number
+	y: number
+	color: string
+	/** Name to show if there's no standing city at the tile (e.g. a razed city) */
+	label?: string
+}
+
+/** How long the action pulses run after a turn change */
+const PULSE_MS = 2700
+const PULSE_PERIOD = 900
+/** Follow mode never zooms in further than this many hexes across the view */
+const FOLLOW_MIN_HEXES = 12
 
 /** Don't auto-pan for this long after the user pans or zooms */
 const USER_PAUSE_MS = 4000
@@ -38,7 +58,7 @@ const MAX_SCALE = 4
 
 const pretty = (s: string) => s.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
-export function HexMap({replay, state, layers, textures, highlight, follow}: Props) {
+export function HexMap({replay, state, layers, textures, highlight, follow, followMs, pulses, fires}: Props) {
 	const wrapRef   = useRef<HTMLDivElement>(null)
 	const canvasRef = useRef<HTMLCanvasElement>(null)
 	const viewRef   = useRef<View>({scale: 1, ox: 0, oy: 0})
@@ -47,6 +67,8 @@ export function HexMap({replay, state, layers, textures, highlight, follow}: Pro
 	const [following, setFollowing] = useState(true)
 	const lastUserMove = useRef(0)
 	const animRef = useRef<number | null>(null)
+	const pulseStart = useRef(0)
+	const pulseAnim = useRef<number | null>(null)
 	const [, forceRender] = useState(0)
 
 	const {mapWidth: W, mapHeight: H} = replay.meta
@@ -58,8 +80,8 @@ export function HexMap({replay, state, layers, textures, highlight, follow}: Pro
 	)
 
 	const overlay = useMemo(
-		() => renderOverlay(replay, state, layers),
-		[replay, state, layers.territory, layers.borders, layers.cities, layers.wonders],
+		() => renderOverlay(replay, state, layers, fires),
+		[replay, state, fires, layers.territory, layers.borders, layers.cities, layers.wonders, layers.fires],
 	)
 
 	const draw = useCallback(() => {
@@ -97,29 +119,79 @@ export function HexMap({replay, state, layers, textures, highlight, follow}: Pro
 			ctx.shadowBlur = 0
 		}
 
-		if (layers.cityNames && scale >= 0.45) {
-			const fontSize = Math.max(10, Math.min(15, 11 * scale))
-			ctx.font = `600 ${fontSize}px system-ui, -apple-system, "Segoe UI", sans-serif`
-			ctx.textAlign = 'center'
-			ctx.textBaseline = 'top'
-			for (const city of state.cities) {
-				const {sx, sy} = toScreen(city.x, city.y)
-				const civ = replay.civs[city.owner]
-				const color = civColor(civ?.name, civ?.isCityState)
-				const label = city.name
-				const ty = sy + HEX_RADIUS * scale * 0.6
-				const tw = ctx.measureText(label).width
-				ctx.fillStyle = 'rgba(10, 14, 20, 0.78)'
-				ctx.beginPath()
-				ctx.roundRect(sx - tw / 2 - 5, ty - 2, tw + 10, fontSize + 5, 4)
-				ctx.fill()
-				ctx.fillStyle = rgb(color.territory)
-				ctx.fillRect(sx - tw / 2 - 5, ty - 2, 3, fontSize + 5)
-				ctx.fillStyle = '#f2ead3'
-				ctx.fillText(label, sx + 1, ty + 1)
+		// Action pulses: expanding rings where something happened this turn
+		const elapsed = performance.now() - pulseStart.current
+		const pulsing = pulses.length > 0 && elapsed < PULSE_MS
+		const pulseAt = new Map<string, Pulse>()
+		if (pulsing) {
+			const fade = Math.min(1, (PULSE_MS - elapsed) / 600)
+			for (const p of pulses) {
+				pulseAt.set(`${p.x},${p.y}`, p)
+				const {sx, sy} = toScreen(p.x, p.y)
+				const base = HEX_RADIUS * scale
+				for (const offset of [0, 0.5]) {
+					const phase = ((elapsed / PULSE_PERIOD) + offset) % 1
+					ctx.beginPath()
+					ctx.arc(sx, sy, base * (0.55 + phase * 2.1), 0, Math.PI * 2)
+					ctx.strokeStyle = p.color
+					ctx.globalAlpha = (1 - phase) * 0.85 * fade
+					ctx.lineWidth = 2.5 + (1 - phase) * 2
+					ctx.stroke()
+				}
+				ctx.globalAlpha = 1
 			}
 		}
-	}, [base, overlay, highlight, layers.cityNames, state, replay, H])
+
+		// City names (always shown for pulsing cities, even when zoomed out)
+		if (layers.cities) {
+			const fontSize = Math.max(10, Math.min(15, 11 * scale))
+			const showAll = scale >= 0.45
+			ctx.textAlign = 'center'
+			ctx.textBaseline = 'top'
+
+			const labels: {x: number; y: number; name: string; owner: number | null}[] = []
+			for (const city of state.cities) {
+				if (showAll || pulseAt.has(`${city.x},${city.y}`)) labels.push({x: city.x, y: city.y, name: city.name, owner: city.owner})
+			}
+			// Razed cities have no standing city, but still get a pulsing label
+			for (const p of pulseAt.values()) {
+				if (p.label && !state.cities.some(c => c.x === p.x && c.y === p.y)) labels.push({x: p.x, y: p.y, name: p.label, owner: null})
+			}
+
+			for (const l of labels) {
+				const pulse = pulseAt.get(`${l.x},${l.y}`)
+				const {sx, sy} = toScreen(l.x, l.y)
+				const civ = l.owner !== null ? replay.civs[l.owner] : undefined
+				const color = civColor(civ?.name, civ?.isCityState)
+				// Pulsing labels swell and glow in the event colour
+				const bump = pulse ? 1 + 0.18 * Math.max(0, Math.sin((elapsed / PULSE_PERIOD) * Math.PI * 2)) * Math.min(1, (PULSE_MS - elapsed) / 600) : 1
+				const fs = (pulse ? Math.max(fontSize, 13) : fontSize) * bump
+				ctx.font = `${pulse ? 700 : 600} ${fs}px system-ui, -apple-system, "Segoe UI", sans-serif`
+				const ty = sy + HEX_RADIUS * scale * 0.6
+				const tw = ctx.measureText(l.name).width
+				const bx = sx - tw / 2 - 5
+				const bh = fs + 5
+				if (pulse) {
+					ctx.shadowColor = pulse.color
+					ctx.shadowBlur = 14
+				}
+				ctx.fillStyle = 'rgba(10, 14, 20, 0.85)'
+				ctx.beginPath()
+				ctx.roundRect(bx, ty - 2, tw + 10, bh, 4)
+				ctx.fill()
+				ctx.shadowBlur = 0
+				if (pulse) {
+					ctx.lineWidth = 1.5
+					ctx.strokeStyle = pulse.color
+					ctx.stroke()
+				}
+				ctx.fillStyle = l.owner !== null ? rgb(color.territory) : '#888'
+				ctx.fillRect(bx, ty - 2, 3, bh)
+				ctx.fillStyle = l.owner === null ? '#bbb' : '#f2ead3'
+				ctx.fillText(l.name, sx + 1, ty + 1)
+			}
+		}
+	}, [base, overlay, highlight, pulses, layers.cities, state, replay, H])
 
 	const fit = useCallback(() => {
 		const wrap = wrapRef.current
@@ -183,21 +255,39 @@ export function HexMap({replay, state, layers, textures, highlight, follow}: Pro
 		return {...v, ox, oy}
 	}, [size])
 
-	/** Ease the view to a new offset */
-	const panTo = useCallback((ox: number, oy: number, ms = 450) => {
+	/**
+	 * Ease the camera to a new view: zoom interpolates geometrically and the
+	 * point at the centre of the screen travels in a straight line, which reads
+	 * as one smooth camera move.
+	 */
+	const animateView = useCallback((target: View, ms = 900) => {
+		const wrap = wrapRef.current
+		if (!wrap) return
 		stopAnimation()
 		const from = viewRef.current
-		const to = clampView({...from, ox, oy})
+		const to = clampView(target)
+		const w = wrap.clientWidth / 2
+		const h = wrap.clientHeight / 2
+		// Base-pixel point at the centre of the screen
+		const c0 = {x: (w - from.ox) / from.scale, y: (h - from.oy) / from.scale}
+		const c1 = {x: (w - to.ox) / to.scale, y: (h - to.oy) / to.scale}
 		const start = performance.now()
 		const step = (now: number) => {
 			const t = Math.min(1, (now - start) / ms)
-			const k = 1 - (1 - t) ** 3 // ease-out
-			viewRef.current = {...from, ox: from.ox + (to.ox - from.ox) * k, oy: from.oy + (to.oy - from.oy) * k}
+			const k = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2 // ease-in-out
+			const scale = from.scale * (to.scale / from.scale) ** k
+			const cx = c0.x + (c1.x - c0.x) * k
+			const cy = c0.y + (c1.y - c0.y) * k
+			viewRef.current = {scale, ox: w - cx * scale, oy: h - cy * scale}
 			drawRef.current()
 			animRef.current = t < 1 ? requestAnimationFrame(step) : null
 		}
 		animRef.current = requestAnimationFrame(step)
 	}, [clampView])
+
+	const panTo = useCallback((ox: number, oy: number, ms = 600) => {
+		animateView({...viewRef.current, ox, oy}, ms)
+	}, [animateView])
 
 	const centroid = (tiles: {x: number; y: number}[]) => {
 		let x = 0
@@ -227,26 +317,61 @@ export function HexMap({replay, state, layers, textures, highlight, follow}: Pro
 		panTo(wrap.clientWidth / 2 - cx * v.scale, wrap.clientHeight / 2 - cy * v.scale)
 	}, [highlight])
 
-	// Follow mode: when zoomed in, drift part of the way toward this turn's action
+	// Follow mode: frame this turn's events (all of them together) with a smooth zoom + pan
 	useEffect(() => {
 		const wrap = wrapRef.current
 		if (!following || !follow?.length || !wrap) return
 		if (performance.now() - lastUserMove.current < USER_PAUSE_MS) return
-		const v = viewRef.current
-		const fitScale = Math.min(wrap.clientWidth / size.w, wrap.clientHeight / size.h)
-		if (v.scale <= fitScale * 1.1) return // whole map already visible
 
-		const {cx, cy} = centroid(follow)
-		const sx = cx * v.scale + v.ox
-		const sy = cy * v.scale + v.oy
 		const w = wrap.clientWidth
 		const h = wrap.clientHeight
-		// Already comfortably in view: leave the map alone
-		if (sx > w * 0.25 && sx < w * 0.75 && sy > h * 0.25 && sy < h * 0.75) return
+		const v = viewRef.current
 
-		const pull = 0.4
-		panTo(v.ox + (w / 2 - sx) * pull, v.oy + (h / 2 - sy) * pull, 600)
+		// Bounding box of the events, padded by a couple of hexes
+		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+		for (const t of follow) {
+			const {cx, cy} = hexCenter(t.x, t.y, H)
+			minX = Math.min(minX, cx); maxX = Math.max(maxX, cx)
+			minY = Math.min(minY, cy); maxY = Math.max(maxY, cy)
+		}
+		const pad = HEX_W * 3
+		const bw = maxX - minX + pad * 2
+		const bh = maxY - minY + pad * 2
+
+		const fitScale = Math.min(w / size.w, h / size.h)
+		const maxScale = Math.min(MAX_SCALE, w / (FOLLOW_MIN_HEXES * HEX_W))
+		const scale = Math.max(fitScale, Math.min(maxScale, Math.min(w / bw, h / bh)))
+		const cx = (minX + maxX) / 2
+		const cy = (minY + maxY) / 2
+
+		// Skip tiny adjustments so the camera doesn't fidget
+		const sx = cx * v.scale + v.ox
+		const sy = cy * v.scale + v.oy
+		const inView = minX * v.scale + v.ox > w * 0.08 && maxX * v.scale + v.ox < w * 0.92 &&
+			minY * v.scale + v.oy > h * 0.1 && maxY * v.scale + v.oy < h * 0.9
+		const zoomRatio = scale / v.scale
+		if (inView && zoomRatio > 0.75 && zoomRatio < 1.35 && Math.hypot(sx - w / 2, sy - h / 2) < Math.min(w, h) * 0.2) return
+
+		animateView({scale, ox: w / 2 - cx * scale, oy: h / 2 - cy * scale}, followMs)
 	}, [follow, following])
+
+	// Run the pulse animation for a few seconds after each turn change
+	useEffect(() => {
+		pulseStart.current = performance.now()
+		if (pulseAnim.current !== null) cancelAnimationFrame(pulseAnim.current)
+		if (!pulses.length) {
+			drawRef.current()
+			return
+		}
+		const tick = () => {
+			drawRef.current()
+			pulseAnim.current = performance.now() - pulseStart.current < PULSE_MS ? requestAnimationFrame(tick) : null
+		}
+		pulseAnim.current = requestAnimationFrame(tick)
+		return () => {
+			if (pulseAnim.current !== null) cancelAnimationFrame(pulseAnim.current)
+		}
+	}, [pulses])
 
 	useEffect(() => stopAnimation, [])
 
@@ -345,7 +470,7 @@ export function HexMap({replay, state, layers, textures, highlight, follow}: Pro
 					className={following ? 'on' : ''}
 					onClick={() => setFollowing(f => !f)}
 					aria-pressed={following}
-					data-tip={following ? 'Follow the action: on. When zoomed in, the map drifts toward each turn\'s events.' : 'Follow the action: off'}
+					data-tip={following ? 'Follow the action: on. The camera zooms and pans to frame each turn\'s events.' : 'Follow the action: off'}
 					data-tip-side="left"
 					aria-label="Follow the action"
 				>◎</button>
