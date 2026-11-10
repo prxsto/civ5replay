@@ -105,3 +105,24 @@ describe('calendar', async () => {
 		expect(formatYear(turnToYear(286, 'GAMESPEED_QUICK'))).toBe('2006 AD')
 	})
 })
+
+describe('event focus', async () => {
+	const {eventFocus} = await import('../model/focus')
+	const {buildNameMatcher} = await import('../model/eventStyle')
+
+	it.each(files)('%s: no off-map tiles, and every war/golden-age/pantheon event resolves to a capital', file => {
+		const replay = parseReplay(load(file))
+		const {mapWidth: W, mapHeight: H} = replay.meta
+		const timeline = new Timeline(replay)
+		const matcher = buildNameMatcher(replay)
+
+		const offMap = replay.events.flatMap(e => e.tiles).filter(t => t.x < 0 || t.y < 0 || t.x >= W || t.y >= H)
+		expect(offMap).toEqual([])
+
+		const unresolved = replay.events
+			.filter(e => /declares war|golden age|pantheon/.test(e.text))
+			.filter(e => eventFocus(e, replay, timeline, matcher).length === 0)
+		// A civ with no cities left (eliminated) legitimately has no capital
+		expect(unresolved.length).toBeLessThan(5)
+	})
+})

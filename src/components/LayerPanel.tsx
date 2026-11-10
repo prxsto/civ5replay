@@ -19,7 +19,7 @@ interface Props {
 }
 
 export function LayerPanel({layers, onToggle}: Props) {
-	const [open, setOpen] = useState(() => window.innerWidth > 900)
+	const [open, setOpen] = useState(false)
 
 	return (
 		<div className={`layer-panel ${open ? 'open' : ''}`}>

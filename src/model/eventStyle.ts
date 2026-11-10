@@ -101,7 +101,7 @@ export interface Span {
 	kind?: 'civ' | 'phrase'
 }
 
-interface NameMatcher {
+export interface NameMatcher {
 	regex: RegExp | null
 	byName: Map<string, Civ>
 }
@@ -165,4 +165,16 @@ export function styleEvent(e: ReplayEvent, category: Category, matcher: NameMatc
 	}
 	if (pos < text.length) spans.push({text: text.slice(pos)})
 	return spans
+}
+
+/** Civs named in a message, in order of first appearance. */
+export function civsMentioned(text: string, matcher: NameMatcher): Civ[] {
+	if (!matcher.regex) return []
+	matcher.regex.lastIndex = 0
+	const out: Civ[] = []
+	for (const m of text.matchAll(matcher.regex)) {
+		const civ = matcher.byName.get(m[0])
+		if (civ && !out.includes(civ)) out.push(civ)
+	}
+	return out
 }

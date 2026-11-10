@@ -52,6 +52,15 @@ export const FEATURES: Record<number, string> = {
 
 const NON_WONDER_FEATURES = new Set([0, 1, 2, 3, 4, 5, 6, 17])
 
+/** Display names for natural wonders, keyed by FEATURES value */
+export const NATURAL_WONDER_NAMES: Record<string, string> = {
+	CRATER: 'Barringer Crater', FUJI: 'Mt. Fuji', MESA: 'Grand Mesa', REEF: 'Great Barrier Reef',
+	VOLCANO: 'Krakatoa', GIBRALTAR: 'Rock of Gibraltar', GEYSER: 'Old Faithful', FOUNTAIN_YOUTH: 'Fountain of Youth',
+	POTOSI: 'Cerro de Potosí', EL_DORADO: 'El Dorado', SRI_PADA: 'Sri Pada', MT_SINAI: 'Mt. Sinai',
+	MT_KAILASH: 'Mt. Kailash', ULURU: 'Uluru', LAKE_VICTORIA: 'Lake Victoria', KILIMANJARO: 'Mt. Kilimanjaro',
+	SOLOMONS_MINES: "King Solomon's Mines",
+}
+
 interface RawEvent {
 	turn: number
 	typeId: number
@@ -257,10 +266,16 @@ function parse(r: BinaryReader): Replay {
 		layout: {headerPadding, preEventsInt},
 	}
 
-	return {meta, civs, datasets, events: processEvents(rawEvents, civs), tiles}
+	return {meta, civs, datasets, events: processEvents(rawEvents, civs, mapWidth, mapHeight), tiles}
 }
 
-function processEvents(rawEvents: RawEvent[], civs: Civ[]): ReplayEvent[] {
+function processEvents(rawEvents: RawEvent[], civs: Civ[], width: number, height: number): ReplayEvent[] {
+	// Many messages (wars, golden ages, pantheons...) carry a placeholder tile at
+	// (-1, -1) meaning "no location"; drop anything that isn't on the map
+	for (const raw of rawEvents) {
+		raw.tiles = raw.tiles.filter(t => t.x >= 0 && t.y >= 0 && t.x < width && t.y < height)
+	}
+
 	const cityAt = new Map<string, string>()
 	const key = (t: {x: number; y: number}) => `${t.x},${t.y}`
 	const civName = (id: number) => civs[id]?.name ?? null

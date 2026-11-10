@@ -83,6 +83,19 @@ export class Timeline {
 		}
 	}
 
+	/**
+	 * The civ's capital at a turn: its oldest self-founded city it still owns
+	 * (the original capital, or where the palace most likely moved), else its
+	 * oldest city of any origin.
+	 */
+	capital(civId: number, turn: number): City | null {
+		const own = this.state(turn).cities.filter(c => c.owner === civId)
+		if (!own.length) return null
+		const founded = own.filter(c => c.foundedBy === civId)
+		const pool = founded.length ? founded : own
+		return pool.reduce((a, b) => (b.foundedTurn < a.foundedTurn ? b : a))
+	}
+
 	state(turn: number): TurnState {
 		const i = Math.max(0, Math.min(this.states.length - 1, turn - this.startTurn))
 		return this.states[i]

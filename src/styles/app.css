@@ -218,6 +218,8 @@ kbd {
 	z-index: 5;
 }
 .tt-city { font-weight: 600; color: var(--gold-bright); }
+.tt-wonder { font-weight: 600; color: #f3c74c; }
+.map-zoom button.on { color: var(--gold-bright); }
 .tt-owner { color: var(--text); }
 .tt-terrain { color: var(--text-2); }
 .tt-coords { color: var(--muted); font-size: 11px; }

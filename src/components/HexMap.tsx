@@ -4,14 +4,21 @@ import type {TurnState} from '../model/timeline'
 import {civColor, rgb} from '../model/civColors'
 import {HEX_RADIUS, hexCenter, mapPixelSize, tileAt} from '../map/hexGeometry'
 import {renderBase, renderOverlay, type Layers, type Textures} from '../map/renderer'
+import {NATURAL_WONDER_NAMES} from '../parser/parseReplay'
 
 interface Props {
 	replay: Replay
 	state: TurnState
 	layers: Layers
 	textures: Textures | null
+	/** Tiles of the selected event: highlighted, and brought into view */
 	highlight: {x: number; y: number}[] | null
+	/** Where this turn's action is; the map drifts toward it when zoomed in */
+	follow: {x: number; y: number}[] | null
 }
+
+/** Don't auto-pan for this long after the user pans or zooms */
+const USER_PAUSE_MS = 4000
 
 interface View {
 	scale: number
@@ -31,12 +38,15 @@ const MAX_SCALE = 4
 
 const pretty = (s: string) => s.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
-export function HexMap({replay, state, layers, textures, highlight}: Props) {
+export function HexMap({replay, state, layers, textures, highlight, follow}: Props) {
 	const wrapRef   = useRef<HTMLDivElement>(null)
 	const canvasRef = useRef<HTMLCanvasElement>(null)
 	const viewRef   = useRef<View>({scale: 1, ox: 0, oy: 0})
 	const dragRef   = useRef<{x: number; y: number; ox: number; oy: number; moved: boolean} | null>(null)
 	const [hover, setHover] = useState<Hover | null>(null)
+	const [following, setFollowing] = useState(true)
+	const lastUserMove = useRef(0)
+	const animRef = useRef<number | null>(null)
 	const [, forceRender] = useState(0)
 
 	const {mapWidth: W, mapHeight: H} = replay.meta
@@ -148,22 +158,101 @@ export function HexMap({replay, state, layers, textures, highlight}: Props) {
 
 	useEffect(() => draw(), [draw])
 
-	// Bring a newly highlighted event into view if it's off-screen
+	// Latest draw() for effects that shouldn't re-run on every turn change
+	const drawRef = useRef(draw)
+	drawRef.current = draw
+
+	const stopAnimation = () => {
+		if (animRef.current !== null) cancelAnimationFrame(animRef.current)
+		animRef.current = null
+	}
+
+	/** Keep the map covering the viewport when it's bigger than it */
+	const clampView = useCallback((v: View): View => {
+		const wrap = wrapRef.current
+		if (!wrap) return v
+		const w = size.w * v.scale
+		const h = size.h * v.scale
+		const slack = 40
+		const ox = w + slack * 2 <= wrap.clientWidth
+			? v.ox
+			: Math.min(slack, Math.max(wrap.clientWidth - w - slack, v.ox))
+		const oy = h + slack * 2 <= wrap.clientHeight
+			? v.oy
+			: Math.min(slack, Math.max(wrap.clientHeight - h - slack, v.oy))
+		return {...v, ox, oy}
+	}, [size])
+
+	/** Ease the view to a new offset */
+	const panTo = useCallback((ox: number, oy: number, ms = 450) => {
+		stopAnimation()
+		const from = viewRef.current
+		const to = clampView({...from, ox, oy})
+		const start = performance.now()
+		const step = (now: number) => {
+			const t = Math.min(1, (now - start) / ms)
+			const k = 1 - (1 - t) ** 3 // ease-out
+			viewRef.current = {...from, ox: from.ox + (to.ox - from.ox) * k, oy: from.oy + (to.oy - from.oy) * k}
+			drawRef.current()
+			animRef.current = t < 1 ? requestAnimationFrame(step) : null
+		}
+		animRef.current = requestAnimationFrame(step)
+	}, [clampView])
+
+	const centroid = (tiles: {x: number; y: number}[]) => {
+		let x = 0
+		let y = 0
+		for (const t of tiles) {
+			const c = hexCenter(t.x, t.y, H)
+			x += c.cx
+			y += c.cy
+		}
+		return {cx: x / tiles.length, cy: y / tiles.length}
+	}
+
+	// Bring a newly selected event into view (only when the selection changes)
 	useEffect(() => {
 		const wrap = wrapRef.current
 		if (!highlight?.length || !wrap) return
+		lastUserMove.current = performance.now() // don't let follow mode drag it away
 		const v = viewRef.current
-		const {cx, cy} = hexCenter(highlight[0].x, highlight[0].y, H)
+		const visible = highlight.every(t => {
+			const {cx, cy} = hexCenter(t.x, t.y, H)
+			const sx = cx * v.scale + v.ox
+			const sy = cy * v.scale + v.oy
+			return sx > 60 && sy > 60 && sx < wrap.clientWidth - 60 && sy < wrap.clientHeight - 60
+		})
+		if (visible) return
+		const {cx, cy} = centroid(highlight)
+		panTo(wrap.clientWidth / 2 - cx * v.scale, wrap.clientHeight / 2 - cy * v.scale)
+	}, [highlight])
+
+	// Follow mode: when zoomed in, drift part of the way toward this turn's action
+	useEffect(() => {
+		const wrap = wrapRef.current
+		if (!following || !follow?.length || !wrap) return
+		if (performance.now() - lastUserMove.current < USER_PAUSE_MS) return
+		const v = viewRef.current
+		const fitScale = Math.min(wrap.clientWidth / size.w, wrap.clientHeight / size.h)
+		if (v.scale <= fitScale * 1.1) return // whole map already visible
+
+		const {cx, cy} = centroid(follow)
 		const sx = cx * v.scale + v.ox
 		const sy = cy * v.scale + v.oy
-		const margin = 60
-		if (sx < margin || sy < margin || sx > wrap.clientWidth - margin || sy > wrap.clientHeight - margin) {
-			viewRef.current = {...v, ox: wrap.clientWidth / 2 - cx * v.scale, oy: wrap.clientHeight / 2 - cy * v.scale}
-			draw()
-		}
-	}, [highlight, H, draw])
+		const w = wrap.clientWidth
+		const h = wrap.clientHeight
+		// Already comfortably in view: leave the map alone
+		if (sx > w * 0.25 && sx < w * 0.75 && sy > h * 0.25 && sy < h * 0.75) return
+
+		const pull = 0.4
+		panTo(v.ox + (w / 2 - sx) * pull, v.oy + (h / 2 - sy) * pull, 600)
+	}, [follow, following])
+
+	useEffect(() => stopAnimation, [])
 
 	const zoomAt = useCallback((factor: number, sx: number, sy: number) => {
+		stopAnimation()
+		lastUserMove.current = performance.now()
 		const v = viewRef.current
 		const scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, v.scale * factor))
 		const k = scale / v.scale
@@ -202,6 +291,7 @@ export function HexMap({replay, state, layers, textures, highlight}: Props) {
 	const onPointerDown = (e: React.PointerEvent) => {
 		;(e.target as Element).setPointerCapture(e.pointerId)
 		const v = viewRef.current
+		stopAnimation()
 		dragRef.current = {x: e.clientX, y: e.clientY, ox: v.ox, oy: v.oy, moved: false}
 	}
 
@@ -215,6 +305,7 @@ export function HexMap({replay, state, layers, textures, highlight}: Props) {
 			const dx = e.clientX - drag.x
 			const dy = e.clientY - drag.y
 			if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true
+			lastUserMove.current = performance.now()
 			viewRef.current = {...viewRef.current, ox: drag.ox + dx, oy: drag.oy + dy}
 			draw()
 			setHover(null)
@@ -250,10 +341,19 @@ export function HexMap({replay, state, layers, textures, highlight}: Props) {
 				<button onClick={() => zoomAt(1.25, wrapRef.current!.clientWidth / 2, wrapRef.current!.clientHeight / 2)} data-tip="Zoom in · +" data-tip-side="left" aria-label="Zoom in">+</button>
 				<button onClick={() => zoomAt(0.8, wrapRef.current!.clientWidth / 2, wrapRef.current!.clientHeight / 2)} data-tip="Zoom out · −" data-tip-side="left" aria-label="Zoom out">−</button>
 				<button onClick={fit} data-tip="Fit the whole map · 0" data-tip-side="left" aria-label="Fit map">⤢</button>
+				<button
+					className={following ? 'on' : ''}
+					onClick={() => setFollowing(f => !f)}
+					aria-pressed={following}
+					data-tip={following ? 'Follow the action: on. When zoomed in, the map drifts toward each turn\'s events.' : 'Follow the action: off'}
+					data-tip-side="left"
+					aria-label="Follow the action"
+				>◎</button>
 			</div>
 
 			{hover && hoverInfo && (
 				<div className="map-tooltip" style={{left: hover.sx + 14, top: hover.sy + 14}}>
+					{hoverInfo.wonder && <div className="tt-wonder">★ {hoverInfo.wonder}</div>}
 					{hoverInfo.city && <div className="tt-city">{hoverInfo.city}</div>}
 					{hoverInfo.owner && <div className="tt-owner">{hoverInfo.owner}</div>}
 					<div className="tt-terrain">{hoverInfo.terrain}</div>
@@ -273,10 +373,11 @@ function describeTile(replay: Replay, state: TurnState, x: number, y: number) {
 	const terrainParts = [
 		tile.elevation === 'MOUNTAIN' ? 'Mountain' : tile.elevation === 'HILLS' ? 'Hills' : null,
 		tile.terrain === 'MOUNTAIN' || tile.terrain === 'HILL' ? null : pretty(tile.terrain),
-		tile.feature ? (tile.naturalWonder ? `★ ${pretty(tile.feature)}` : pretty(tile.feature)) : null,
+		tile.feature && !tile.naturalWonder ? pretty(tile.feature) : null,
 	].filter(Boolean)
 
 	return {
+		wonder: tile.naturalWonder && tile.feature ? (NATURAL_WONDER_NAMES[tile.feature] ?? `${pretty(tile.feature)} (natural wonder)`) : null,
 		city: city?.name,
 		owner: owner >= 0 ? replay.civs[owner]?.name : null,
 		terrain: terrainParts.join(' · '),

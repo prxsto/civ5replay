@@ -10,6 +10,8 @@ import {StatsPanel} from './components/StatsPanel'
 import {LayerPanel, LAYER_INFO} from './components/LayerPanel'
 import {YearBadge} from './components/YearBadge'
 import {DEFAULT_SPEED, isKnownSpeed, type GameSpeed} from './model/calendar'
+import {buildNameMatcher} from './model/eventStyle'
+import {eventFocus, turnFocus, type TilePos} from './model/focus'
 
 const EXAMPLE = 'replays/wu-zetian-2006-ad.Civ5Replay'
 const DEFAULT_TYPES: EventType[] = ['MESSAGE', 'CITY_FOUNDED', 'CITIES_TRANSFERRED', 'CITY_RAZED', 'RELIGION_FOUNDED', 'PANTHEON_SELECTED']
@@ -35,6 +37,7 @@ export function App() {
 	const [types, setTypes]       = useState<Set<EventType>>(new Set(DEFAULT_TYPES))
 	const [civFilter, setCivFilter] = useState<number | null>(null)
 	const [selected, setSelected] = useState<ReplayEvent | null>(null)
+	const [highlight, setHighlight] = useState<TilePos[] | null>(null)
 	const [tab, setTab]           = useState<'events' | 'stats'>('events')
 	const [calendar, setCalendar] = useState<GameSpeed>(DEFAULT_SPEED)
 	const fileInput = useRef<HTMLInputElement>(null)
@@ -58,6 +61,7 @@ export function App() {
 			setCalendar(isKnownSpeed(replay.meta.gameSpeed) ? replay.meta.gameSpeed : DEFAULT_SPEED)
 			setError(null)
 			setSelected(null)
+			setHighlight(null)
 			setCivFilter(null)
 			setPlaying(false)
 			const t = initialTurn ?? timeline.startTurn
@@ -162,7 +166,7 @@ export function App() {
 				case '1': case '2': case '3': case '4': case '5':
 					setSpeed(Number(e.key) - 1)
 					break
-				case 'Escape':     setSelected(null); break
+				case 'Escape':     setSelected(null); setHighlight(null); break
 				default: return
 			}
 			e.preventDefault()
@@ -209,14 +213,27 @@ export function App() {
 	}, [loaded])
 
 	// Clicking an event jumps to its turn and highlights its tiles on the map
+	const matcher = useMemo(() => loaded ? buildNameMatcher(loaded.replay) : null, [loaded])
+
 	const selectEvent = useCallback((e: ReplayEvent) => {
+		if (!loaded || !matcher) return
 		setPlaying(false)
-		setSelected(prev => {
-			if (prev === e) return null
-			return e.tiles.length ? e : null
-		})
 		setTurnRaw(e.turn)
-	}, [])
+		if (selected === e) {
+			setSelected(null)
+			setHighlight(null)
+			return
+		}
+		const focus = eventFocus(e, loaded.replay, loaded.timeline, matcher)
+		setSelected(e)
+		setHighlight(focus.length ? focus : null)
+	}, [loaded, matcher, selected])
+
+	const follow = useMemo(() => {
+		if (!loaded) return null
+		const tiles = turnFocus(loaded.timeline, turn)
+		return tiles.length ? tiles : null
+	}, [loaded, turn])
 
 	const toggleType = useCallback((type: EventType) => {
 		setTypes(prev => {
@@ -278,7 +295,8 @@ export function App() {
 								state={state}
 								layers={layers}
 								textures={textures}
-								highlight={selected?.tiles ?? null}
+								highlight={highlight}
+								follow={follow}
 							/>
 						)}
 						<LayerPanel layers={layers} onToggle={toggleLayer} />
