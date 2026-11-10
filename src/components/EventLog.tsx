@@ -1,27 +1,25 @@
-import {memo, useLayoutEffect, useMemo, useRef, useState} from 'react'
-import type {EventType, Replay, ReplayEvent} from '../parser/types'
+import {memo, useLayoutEffect, useMemo, useRef} from 'react'
+import type {Replay, ReplayEvent} from '../parser/types'
 import {buildNameMatcher, categorize, CATEGORY_INFO, styleEvent, victoryColor, type Category, type Span} from '../model/eventStyle'
 
-export const EVENT_TYPE_INFO: {type: EventType; label: string}[] = [
-	{type: 'MESSAGE',            label: 'Messages'},
-	{type: 'CITY_FOUNDED',       label: 'New cities'},
-	{type: 'CITIES_TRANSFERRED', label: 'Captures'},
-	{type: 'CITY_RAZED',         label: 'Razings'},
-	{type: 'RELIGION_FOUNDED',   label: 'Religions'},
-	{type: 'PANTHEON_SELECTED',  label: 'Pantheons'},
-	{type: 'TILES_CLAIMED',      label: 'Tile claims'},
+/** Filter chips, in display order. Each doubles as the colour legend. */
+export const FILTER_CATEGORIES: Category[] = [
+	'victory', 'war', 'peace', 'diplomacy', 'capture', 'raze', 'golden', 'wonder',
+	'science', 'culture', 'religion', 'founded', 'info', 'claims',
 ]
 
-const LEGEND: Category[] = ['victory', 'war', 'capture', 'raze', 'peace', 'diplomacy', 'golden', 'wonder', 'science', 'culture', 'religion']
+/** Everything except tile claims, which are very frequent and not very interesting */
+export const DEFAULT_CATEGORIES: Category[] = FILTER_CATEGORIES.filter(c => c !== 'claims')
 
 interface Props {
 	replay: Replay
 	turn: number
-	types: Set<EventType>
+	categories: Set<Category>
 	civFilter: number | null
 	selected: ReplayEvent | null
 	smoothScroll: boolean
-	onToggleType: (type: EventType) => void
+	onToggleCategory: (category: Category) => void
+	onSetCategories: (categories: Category[]) => void
 	onCivFilter: (civId: number | null) => void
 	onSelect: (event: ReplayEvent) => void
 }
@@ -33,9 +31,8 @@ interface Styled {
 	accent: string
 }
 
-export function EventLog({replay, turn, types, civFilter, selected, smoothScroll, onToggleType, onCivFilter, onSelect}: Props) {
+export function EventLog({replay, turn, categories, civFilter, selected, smoothScroll, onToggleCategory, onSetCategories, onCivFilter, onSelect}: Props) {
 	const listRef = useRef<HTMLDivElement>(null)
-	const [showLegend, setShowLegend] = useState(false)
 
 	// Classify + split every message once per replay
 	const styled = useMemo(() => {
@@ -57,13 +54,13 @@ export function EventLog({replay, turn, types, civFilter, selected, smoothScroll
 		const out: {turn: number; items: Styled[]}[] = []
 		for (const s of styled) {
 			const e = s.event
-			if (!types.has(e.type) || (civFilter !== null && e.civId !== civFilter)) continue
+			if (!categories.has(s.category) || (civFilter !== null && e.civId !== civFilter)) continue
 			const last = out[out.length - 1]
 			if (last && last.turn === e.turn) last.items.push(s)
 			else out.push({turn: e.turn, items: [s]})
 		}
 		return out
-	}, [styled, types, civFilter])
+	}, [styled, categories, civFilter])
 
 	// The newest group at or before the current turn is the anchor we keep centered
 	let anchorTurn: number | null = null
@@ -93,9 +90,15 @@ export function EventLog({replay, turn, types, civFilter, selected, smoothScroll
 		<div className="event-log">
 			<div className="event-filters">
 				<div className="chips">
-					{EVENT_TYPE_INFO.map(({type, label}) => (
-						<button key={type} className={`chip ${types.has(type) ? 'on' : ''}`} onClick={() => onToggleType(type)} aria-pressed={types.has(type)}>
-							{label}
+					{FILTER_CATEGORIES.map(c => (
+						<button
+							key={c}
+							className={`chip ${categories.has(c) ? 'on' : ''}`}
+							onClick={() => onToggleCategory(c)}
+							aria-pressed={categories.has(c)}
+						>
+							<span className="dot" style={{background: CATEGORY_INFO[c].color}} />
+							{CATEGORY_INFO[c].label}
 						</button>
 					))}
 				</div>
@@ -111,18 +114,9 @@ export function EventLog({replay, turn, types, civFilter, selected, smoothScroll
 							</optgroup>
 						)}
 					</select>
-					<button className={`chip legend-toggle ${showLegend ? 'on' : ''}`} onClick={() => setShowLegend(!showLegend)} aria-expanded={showLegend}>
-						Colors
-					</button>
+					<button className="chip" onClick={() => onSetCategories(FILTER_CATEGORIES)}>All</button>
+					<button className="chip" onClick={() => onSetCategories([])}>None</button>
 				</div>
-				{showLegend && (
-					<ul className="legend">
-						{LEGEND.map(c => (
-							<li key={c}><span className="dot" style={{background: CATEGORY_INFO[c].color}} />{CATEGORY_INFO[c].label}</li>
-						))}
-						<li><span className="dot" style={{background: '#a3a3a3'}} />City-states</li>
-					</ul>
-				)}
 			</div>
 
 			<div className="event-list" ref={listRef}>

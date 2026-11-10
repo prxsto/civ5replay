@@ -15,9 +15,9 @@ Supports replays from Brave New World (mid-2013) through the final patch (1.0.3.
 - Follow mode: the camera smoothly zooms and pans to frame each turn's events, and the places where things happen pulse
 - Burning cities: flames in the razing civ's colour on a city and its neighbouring tiles while it is razed
 - In-game year for every turn (from the game-speed calendar in `CIV5GameSpeeds.xml`), with a speed override
-- Event feed that keeps the current turn centered (future turns dimmed), filterable by event type and civilization; click an event to jump to it and highlight it on the map
+- Event feed that keeps the current turn centered (future turns dimmed), filterable by category (wars, peace, wonders, golden ages, religion, science, culture, captures, razings…) and civilization; click an event to jump to it and highlight it on the map
 - Color-coded messages: civ names in their civ colors (city-states grey), key phrases tinted by category (war, peace, captures, razing, golden ages, wonders, science, culture, religion, victories)
-- Stats tab: any of the ~27 per-civ datasets in the replay (score, techs, military, gold…) charted over time, with a ranking at the current turn
+- Stats tab: any of the ~27 per-civ datasets in the replay (score, techs, military, gold…) charted over time with turn/year axes, a ranking at the current or hovered turn, and a full-screen view
 - Timeline with an event-density strip, playback at five speeds, linkable `?file=…&turn=…` URLs
 
 ## Development

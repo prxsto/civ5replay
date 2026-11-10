@@ -1,21 +1,20 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {parseReplay} from './parser/parseReplay'
-import type {EventType, Replay, ReplayEvent} from './parser/types'
+import type {Replay, ReplayEvent} from './parser/types'
 import {Timeline} from './model/timeline'
 import {DEFAULT_LAYERS, loadTextures, type Layers, type Textures} from './map/renderer'
 import {HexMap, type Pulse} from './components/HexMap'
 import {TimelineBar, SPEEDS} from './components/TimelineBar'
-import {EventLog} from './components/EventLog'
+import {EventLog, DEFAULT_CATEGORIES} from './components/EventLog'
 import {StatsPanel} from './components/StatsPanel'
 import {LayerPanel, LAYER_INFO} from './components/LayerPanel'
 import {YearBadge} from './components/YearBadge'
-import {DEFAULT_SPEED, isKnownSpeed, type GameSpeed} from './model/calendar'
-import {buildNameMatcher, categorize, CATEGORY_INFO, victoryColor} from './model/eventStyle'
+import {DEFAULT_SPEED, formatDate, isKnownSpeed, turnToDate, type GameSpeed} from './model/calendar'
+import {buildNameMatcher, categorize, CATEGORY_INFO, victoryColor, type Category} from './model/eventStyle'
 import {neighbor} from './map/hexGeometry'
 import {eventFocus, turnFocus, type TilePos} from './model/focus'
 
 const EXAMPLE = 'replays/wu-zetian-2006-ad.Civ5Replay'
-const DEFAULT_TYPES: EventType[] = ['MESSAGE', 'CITY_FOUNDED', 'CITIES_TRANSFERRED', 'CITY_RAZED', 'RELIGION_FOUNDED', 'PANTHEON_SELECTED']
 
 const pretty = (s: string) => s.replace(/^[A-Z]+_/, '').toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
@@ -35,7 +34,7 @@ export function App() {
 	const [playing, setPlaying]   = useState(false)
 	const [speed, setSpeed]       = useState(2)
 	const [layers, setLayers]     = useState<Layers>(DEFAULT_LAYERS)
-	const [types, setTypes]       = useState<Set<EventType>>(new Set(DEFAULT_TYPES))
+	const [categories, setCategories] = useState<Set<Category>>(new Set(DEFAULT_CATEGORIES))
 	const [civFilter, setCivFilter] = useState<number | null>(null)
 	const [selected, setSelected] = useState<ReplayEvent | null>(null)
 	const [highlight, setHighlight] = useState<TilePos[] | null>(null)
@@ -265,11 +264,11 @@ export function App() {
 		return loaded.timeline.firesAt(turn, nbrs)
 	}, [loaded, turn])
 
-	const toggleType = useCallback((type: EventType) => {
-		setTypes(prev => {
+	const toggleCategory = useCallback((category: Category) => {
+		setCategories(prev => {
 			const next = new Set(prev)
-			if (next.has(type)) next.delete(type)
-			else next.add(type)
+			if (next.has(category)) next.delete(category)
+			else next.add(category)
 			return next
 		})
 	}, [])
@@ -317,7 +316,7 @@ export function App() {
 					</div>
 				</main>
 			) : (
-				<main className="viewer">
+				<main className={`viewer ${tab === 'stats' ? 'wide-sidebar' : ''}`}>
 					<section className="map-area">
 						{state && (
 							<HexMap
@@ -352,16 +351,22 @@ export function App() {
 							<EventLog
 								replay={loaded.replay}
 								turn={turn}
-								types={types}
+								categories={categories}
 								civFilter={civFilter}
 								selected={selected}
 								smoothScroll={!playing || SPEEDS[speed].ms >= 500}
-								onToggleType={toggleType}
+								onToggleCategory={toggleCategory}
+								onSetCategories={c => setCategories(new Set(c))}
 								onCivFilter={setCivFilter}
 								onSelect={selectEvent}
 							/>
 						) : (
-							<StatsPanel replay={loaded.replay} turn={turn} onTurn={setTurn} />
+							<StatsPanel
+								replay={loaded.replay}
+								turn={turn}
+								onTurn={setTurn}
+								yearAt={t => formatDate(turnToDate(t, calendar, loaded.replay.meta.startYear, loaded.replay.meta.startTurn))}
+							/>
 						)}
 					</aside>
 

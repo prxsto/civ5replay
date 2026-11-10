@@ -22,6 +22,7 @@ export type Category =
 	| 'religion'
 	| 'founded'
 	| 'info'
+	| 'claims'
 
 export const CATEGORY_INFO: Record<Category, {label: string; color: string}> = {
 	victory:   {label: 'Victory',            color: '#ffd76a'},
@@ -37,6 +38,7 @@ export const CATEGORY_INFO: Record<Category, {label: string; color: string}> = {
 	religion:  {label: 'Religion',           color: '#b392ff'},
 	founded:   {label: 'New city',           color: '#d8cfb6'},
 	info:      {label: 'Other',              color: '#7f8a99'},
+	claims:    {label: 'Tile claims',        color: '#56657a'},
 }
 
 const VICTORY_COLORS: Record<string, Category> = {
@@ -71,7 +73,7 @@ export function categorize(e: ReplayEvent): Category {
 		case 'RELIGION_FOUNDED':
 		case 'PANTHEON_SELECTED':  return 'religion'
 		case 'CITY_FOUNDED':       return 'founded'
-		case 'TILES_CLAIMED':      return 'info'
+		case 'TILES_CLAIMED':      return 'claims'
 	}
 
 	const victory = t.match(/has won an? (\w+) Victory/i)
