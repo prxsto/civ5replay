@@ -27,6 +27,8 @@ describe.each(files)('%s', file => {
 		expect(replay.tiles.length).toBe(meta.mapHeight)
 		expect(replay.tiles.every(row => row.length === meta.mapWidth)).toBe(true)
 		expect(replay.tiles.flat().filter(t => t.terrain === 'UNKNOWN')).toEqual([])
+		// Fallout is hidden (no way to know when it appeared)
+		expect(replay.tiles.flat().filter(t => t.feature === 'FALLOUT')).toEqual([])
 	})
 
 	it('reads events within the game', () => {

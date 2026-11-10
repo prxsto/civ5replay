@@ -148,18 +148,6 @@ function drawFeature(ctx: CanvasRenderingContext2D, feature: string, textures: T
 			ctx.fillStyle = 'rgba(120,170,70,0.45)'
 			ctx.fillRect(cx - HEX_W / 2, cy - r, HEX_W, r * 2)
 			break
-		case 'FALLOUT':
-			ctx.fillStyle = 'rgba(170,190,40,0.45)'
-			ctx.fillRect(cx - HEX_W / 2, cy - r, HEX_W, r * 2)
-			ctx.strokeStyle = 'rgba(60,60,0,0.6)'
-			ctx.lineWidth = 1
-			for (let i = -2; i <= 2; i++) {
-				ctx.beginPath()
-				ctx.moveTo(cx + i * 6 - r, cy + r)
-				ctx.lineTo(cx + i * 6 + r, cy - r)
-				ctx.stroke()
-			}
-			break
 	}
 }
 

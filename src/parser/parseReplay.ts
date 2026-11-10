@@ -51,6 +51,7 @@ export const FEATURES: Record<number, string> = {
 }
 
 const NON_WONDER_FEATURES = new Set([0, 1, 2, 3, 4, 5, 6, 17])
+const FALLOUT_ID = 6
 
 /** Display names for natural wonders, keyed by FEATURES value */
 export const NATURAL_WONDER_NAMES: Record<string, string> = {
@@ -251,7 +252,9 @@ function parse(r: BinaryReader): Replay {
 			index,
 			elevation: ELEVATIONS[elevationId] ?? 'FLAT',
 			terrain: TERRAINS[typeId] ?? 'UNKNOWN',
-			feature: featureId < 0 ? null : (FEATURES[featureId] ?? `FEATURE_${featureId}`),
+			// The map is an end-of-game snapshot, and nothing in the replay says when a
+			// nuke was dropped, so fallout would wrongly show from turn 0: treat it as no feature
+			feature: featureId < 0 || featureId === FALLOUT_ID ? null : (FEATURES[featureId] ?? `FEATURE_${featureId}`),
 			naturalWonder: featureId >= 0 && !NON_WONDER_FEATURES.has(featureId),
 			raw: {elevationId, typeId, featureId},
 		}
